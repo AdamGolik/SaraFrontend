@@ -58,8 +58,9 @@ const formSchema = z.object({
   added_description: z.object({
     contact_preference: z.string().optional(),
     priority: z.string().optional(),
-    dodatkowe: z.string().optional(),
-    custom_fields: z.record(z.string()).optional(),
+    notes: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    custom_fields: z.record(z.any()).optional(),
   }),
 });
 
@@ -118,6 +119,12 @@ function TimePicker({ date, onChange }: TimePickerProps) {
   );
 }
 
+interface CustomField {
+  key: string;
+  value: string | string[];
+  type: "string" | "array" | "number";
+}
+
 export default function ClientFormPage({
   params,
 }: {
@@ -126,9 +133,9 @@ export default function ClientFormPage({
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [customFields, setCustomFields] = useState<
-    { key: string; value: string }[]
-  >([]);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [customFieldsPage, setCustomFieldsPage] = useState(1);
+  const ITEMS_PER_PAGE = 5;
   const resolvedParams = use(params);
   const isEdit = resolvedParams.action !== "new";
 
@@ -149,7 +156,8 @@ export default function ClientFormPage({
       added_description: {
         contact_preference: "telephone",
         priority: "medium",
-        dodatkowe: "",
+        notes: "",
+        tags: [],
         custom_fields: {},
       },
     },
@@ -165,13 +173,39 @@ export default function ClientFormPage({
     }
   }, [isEdit]);
 
+  const detectFieldType = (value: any): "string" | "array" | "number" => {
+    if (Array.isArray(value)) return "array";
+    if (typeof value === "number") return "number";
+    return "string";
+  };
+
   const fetchClient = async () => {
     try {
       setIsLoading(true);
       const response = await clients.getById(resolvedParams.action);
-      const customFieldsArray = Object.entries(
-        response.added_description.custom_fields || {},
-      ).map(([key, value]) => ({ key, value: value as string }));
+
+      // Convert all added_description fields to custom fields
+      const customFieldsArray = Object.entries(response.added_description || {})
+        .map(([key, value]) => {
+          // Skip standard fields that have their own form controls
+          if (
+            ["contact_preference", "priority", "notes", "tags"].includes(key)
+          ) {
+            return null;
+          }
+
+          return {
+            key,
+            value: Array.isArray(value) ? value : String(value),
+            type: Array.isArray(value)
+              ? "array"
+              : typeof value === "number"
+                ? "number"
+                : "string",
+          };
+        })
+        .filter(Boolean) as CustomField[];
+
       setCustomFields(customFieldsArray);
 
       // Convert time_from and time_to to separate date and time fields
@@ -200,33 +234,65 @@ export default function ClientFormPage({
   };
 
   const addCustomField = () => {
-    setCustomFields([...customFields, { key: "", value: "" }]);
+    setCustomFields([...customFields, { key: "", value: "", type: "string" }]);
   };
 
   const removeCustomField = (index: number) => {
     setCustomFields(customFields.filter((_, i) => i !== index));
   };
 
-  const updateCustomField = (
-    index: number,
-    field: { key: string; value: string },
-  ) => {
+  const updateCustomField = (index: number, field: CustomField) => {
     const newFields = [...customFields];
     newFields[index] = field;
     setCustomFields(newFields);
+  };
+
+  const handleCustomFieldValueChange = (index: number, value: string) => {
+    const field = customFields[index];
+    let newValue: string | string[] = value;
+
+    if (field.type === "array") {
+      newValue = value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    } else if (field.type === "number") {
+      newValue = value.replace(/[^0-9.-]/g, "");
+    }
+
+    updateCustomField(index, { ...field, value: newValue });
+  };
+
+  const handleCustomFieldTypeChange = (
+    index: number,
+    type: "string" | "array" | "number",
+  ) => {
+    const field = customFields[index];
+    let newValue: string | string[] = field.value;
+
+    if (type === "array" && typeof newValue === "string") {
+      newValue = newValue
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    } else if (type === "string" && Array.isArray(newValue)) {
+      newValue = newValue.join(", ");
+    }
+
+    updateCustomField(index, { ...field, type, value: newValue });
   };
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       setIsLoading(true);
       const customFieldsObject = customFields.reduce(
-        (acc, { key, value }) => {
+        (acc, { key, value, type }) => {
           if (key && value) {
-            acc[key] = value;
+            acc[key] = type === "number" ? Number(value) : value;
           }
           return acc;
         },
-        {} as Record<string, string>,
+        {} as Record<string, any>,
       );
 
       // Create time_from and time_to dates from the selected date and times
@@ -249,11 +315,12 @@ export default function ClientFormPage({
         time_to: timeTo.toISOString().split(".")[0],
         datetime: values.datetime.toISOString().split(".")[0],
         added_description: {
+          ...customFieldsObject,
           contact_preference:
             values.added_description.contact_preference || "telephone",
           priority: values.added_description.priority || "medium",
-          dodatkowe: values.added_description.dodatkowe || "",
-          custom_fields: customFieldsObject,
+          notes: values.added_description.notes || "",
+          tags: values.added_description.tags || [],
         },
       };
 
@@ -290,24 +357,26 @@ export default function ClientFormPage({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 p-4 md:p-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
           {isEdit ? "Edytuj klienta" : "Dodaj nowego klienta"}
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-sm md:text-base text-muted-foreground mt-1">
           {isEdit
             ? "Zaktualizuj dane klienta"
             : "Wypełnij formularz, aby dodać nowego klienta"}
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Dane klienta</CardTitle>
-          <CardDescription>Wypełnij wszystkie wymagane pola</CardDescription>
+      <Card className="w-full">
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="text-xl md:text-2xl">Dane klienta</CardTitle>
+          <CardDescription className="text-sm md:text-base">
+            Wypełnij wszystkie wymagane pola
+          </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 md:p-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -424,7 +493,7 @@ export default function ClientFormPage({
                   )}
                 />
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <FormLabel>Godzina rozpoczęcia</FormLabel>
                     <div className="flex space-x-2">
@@ -432,13 +501,13 @@ export default function ClientFormPage({
                         control={form.control}
                         name="startHour"
                         render={({ field }) => (
-                          <FormItem>
+                          <FormItem className="flex-1">
                             <Select
                               onValueChange={field.onChange}
                               defaultValue={field.value}
                             >
                               <FormControl>
-                                <SelectTrigger className="w-[80px]">
+                                <SelectTrigger>
                                   <SelectValue placeholder="Godz" />
                                 </SelectTrigger>
                               </FormControl>
@@ -460,13 +529,13 @@ export default function ClientFormPage({
                         control={form.control}
                         name="startMinute"
                         render={({ field }) => (
-                          <FormItem>
+                          <FormItem className="flex-1">
                             <Select
                               onValueChange={field.onChange}
                               defaultValue={field.value}
                             >
                               <FormControl>
-                                <SelectTrigger className="w-[80px]">
+                                <SelectTrigger>
                                   <SelectValue placeholder="Min" />
                                 </SelectTrigger>
                               </FormControl>
@@ -494,13 +563,13 @@ export default function ClientFormPage({
                         control={form.control}
                         name="endHour"
                         render={({ field }) => (
-                          <FormItem>
+                          <FormItem className="flex-1">
                             <Select
                               onValueChange={field.onChange}
                               defaultValue={field.value}
                             >
                               <FormControl>
-                                <SelectTrigger className="w-[80px]">
+                                <SelectTrigger>
                                   <SelectValue placeholder="Godz" />
                                 </SelectTrigger>
                               </FormControl>
@@ -522,13 +591,13 @@ export default function ClientFormPage({
                         control={form.control}
                         name="endMinute"
                         render={({ field }) => (
-                          <FormItem>
+                          <FormItem className="flex-1">
                             <Select
                               onValueChange={field.onChange}
                               defaultValue={field.value}
                             >
                               <FormControl>
-                                <SelectTrigger className="w-[80px]">
+                                <SelectTrigger>
                                   <SelectValue placeholder="Min" />
                                 </SelectTrigger>
                               </FormControl>
@@ -551,28 +620,74 @@ export default function ClientFormPage({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <h3 className="text-lg font-medium">Dodatkowe informacje</h3>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="added_description.contact_preference"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Preferowany kontakt</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Wybierz preferowany kontakt" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="telephone">Telefon</SelectItem>
+                            <SelectItem value="email">Email</SelectItem>
+                            <SelectItem value="sms">SMS</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="added_description.priority"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Priorytet</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Wybierz priorytet" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="high">Wysoki</SelectItem>
+                            <SelectItem value="medium">Średni</SelectItem>
+                            <SelectItem value="low">Niski</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 <FormField
                   control={form.control}
-                  name="added_description.contact_preference"
+                  name="added_description.notes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Preferowany kontakt</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Wybierz preferowany kontakt" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="telephone">Telefon</SelectItem>
-                          <SelectItem value="email">Email</SelectItem>
-                          <SelectItem value="sms">SMS</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <FormLabel>Notatki</FormLabel>
+                      <FormControl>
+                        <Textarea {...field} />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -580,98 +695,193 @@ export default function ClientFormPage({
 
                 <FormField
                   control={form.control}
-                  name="added_description.priority"
+                  name="added_description.tags"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Priorytet</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Wybierz priorytet" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="high">Wysoki</SelectItem>
-                          <SelectItem value="medium">Średni</SelectItem>
-                          <SelectItem value="low">Niski</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <FormLabel>Tagi (oddzielone przecinkami)</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          value={
+                            Array.isArray(field.value)
+                              ? field.value.join(", ")
+                              : ""
+                          }
+                          onChange={(e) => {
+                            const tags = e.target.value
+                              .split(",")
+                              .map((tag) => tag.trim())
+                              .filter(Boolean);
+                            field.onChange(tags);
+                          }}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
 
-              <FormField
-                control={form.control}
-                name="added_description.dodatkowe"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dodatkowe informacje</FormLabel>
-                    <FormControl>
-                      <Textarea {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <h3 className="text-lg font-medium">Dodatkowe pola</h3>
                   <Button
                     type="button"
                     variant="outline"
                     onClick={addCustomField}
+                    className="w-full sm:w-auto"
                   >
                     Dodaj pole
                   </Button>
                 </div>
-                {customFields.map((field, index) => (
-                  <div key={index} className="flex space-x-2">
-                    <Input
-                      placeholder="Nazwa pola"
-                      value={field.key}
-                      onChange={(e) =>
-                        updateCustomField(index, {
-                          ...field,
-                          key: e.target.value,
-                        })
-                      }
-                    />
-                    <Input
-                      placeholder="Wartość"
-                      value={field.value}
-                      onChange={(e) =>
-                        updateCustomField(index, {
-                          ...field,
-                          value: e.target.value,
-                        })
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      onClick={() => removeCustomField(index)}
+
+                {customFields
+                  .slice(
+                    (customFieldsPage - 1) * ITEMS_PER_PAGE,
+                    customFieldsPage * ITEMS_PER_PAGE,
+                  )
+                  .map((field, index) => (
+                    <div
+                      key={index}
+                      className="flex flex-col space-y-2 p-4 border rounded-lg"
                     >
-                      Usuń
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Input
+                          placeholder="Nazwa pola"
+                          value={field.key}
+                          onChange={(e) =>
+                            updateCustomField(index, {
+                              ...field,
+                              key: e.target.value,
+                            })
+                          }
+                          className="flex-1"
+                        />
+                        <Select
+                          value={field.type}
+                          onValueChange={(
+                            value: "string" | "array" | "number",
+                          ) => handleCustomFieldTypeChange(index, value)}
+                          className="w-full sm:w-[180px]"
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Typ pola" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="string">Tekst</SelectItem>
+                            <SelectItem value="array">Lista</SelectItem>
+                            <SelectItem value="number">Liczba</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() => removeCustomField(index)}
+                          className="w-full sm:w-auto"
+                        >
+                          Usuń
+                        </Button>
+                      </div>
+
+                      {field.type === "array" ? (
+                        <div className="space-y-2">
+                          <Input
+                            placeholder="Wartości (oddzielone przecinkami)"
+                            value={
+                              Array.isArray(field.value)
+                                ? field.value.join(", ")
+                                : field.value
+                            }
+                            onChange={(e) =>
+                              handleCustomFieldValueChange(
+                                index,
+                                e.target.value,
+                              )
+                            }
+                          />
+                          {Array.isArray(field.value) &&
+                            field.value.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {field.value.map((item, i) => (
+                                  <span
+                                    key={i}
+                                    className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                                  >
+                                    {item}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                        </div>
+                      ) : (
+                        <Input
+                          placeholder={
+                            field.type === "number"
+                              ? "Wprowadź liczbę"
+                              : "Wprowadź wartość"
+                          }
+                          value={field.value}
+                          onChange={(e) =>
+                            handleCustomFieldValueChange(index, e.target.value)
+                          }
+                          type={field.type === "number" ? "number" : "text"}
+                        />
+                      )}
+                    </div>
+                  ))}
+
+                {customFields.length > ITEMS_PER_PAGE && (
+                  <div className="flex flex-col sm:flex-row justify-center items-center gap-2 mt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        setCustomFieldsPage((prev) => Math.max(prev - 1, 1))
+                      }
+                      disabled={customFieldsPage === 1}
+                      className="w-full sm:w-auto"
+                    >
+                      Poprzednia
+                    </Button>
+                    <span className="text-sm">
+                      Strona {customFieldsPage} z{" "}
+                      {Math.ceil(customFields.length / ITEMS_PER_PAGE)}
+                    </span>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        setCustomFieldsPage((prev) =>
+                          Math.min(
+                            prev + 1,
+                            Math.ceil(customFields.length / ITEMS_PER_PAGE),
+                          ),
+                        )
+                      }
+                      disabled={
+                        customFieldsPage ===
+                        Math.ceil(customFields.length / ITEMS_PER_PAGE)
+                      }
+                      className="w-full sm:w-auto"
+                    >
+                      Następna
                     </Button>
                   </div>
-                ))}
+                )}
               </div>
 
-              <div className="flex justify-end space-x-4">
+              <div className="flex flex-col sm:flex-row justify-end gap-4 pt-4">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => router.push("/dashboard")}
+                  className="w-full sm:w-auto"
                 >
                   Anuluj
                 </Button>
-                <Button type="submit" disabled={isLoading}>
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full sm:w-auto"
+                >
                   {isLoading
                     ? "Zapisywanie..."
                     : isEdit

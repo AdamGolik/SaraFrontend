@@ -218,3 +218,4 @@ export const user = {
 };
 
 export default api;
+

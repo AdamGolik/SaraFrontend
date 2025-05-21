@@ -122,8 +122,25 @@ export default function CalendarPage() {
       );
 
       // Update clients list and total pages
+      console.log("API Response in fetchClients:", response);
+      console.log(
+        "Total clients from API (from pagination): ",
+        response?.pagination?.total,
+      );
+      console.log(
+        "Total pages from API pagination:",
+        response?.pagination?.total_pages,
+      );
+
+      // Use total_pages directly from the API response pagination object
+      const calculatedTotalPages = response?.pagination?.total_pages || 1;
+
+      console.log(
+        "Calculated total pages based on API pagination:",
+        calculatedTotalPages,
+      );
       setClientsList(Array.isArray(response.clients) ? response.clients : []);
-      setTotalPages(Math.ceil(response.total / perPage));
+      setTotalPages(calculatedTotalPages);
     } catch (error: any) {
       console.error("Error in calendar fetch:", error);
       toast({
@@ -344,26 +361,52 @@ export default function CalendarPage() {
                 },
               }}
             />
+            {currentPage < totalPages && (
+              <div className="flex justify-center mt-4">
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
+                  className="w-full sm:w-auto"
+                >
+                  Następna strona
+                </Button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <span className="text-sm font-medium">Od godziny:</span>
-                <Select
-                  value={timeRange.from}
-                  onValueChange={(value) =>
-                    setTimeRange((prev) => ({ ...prev, from: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Wybierz godzinę" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {generateTimeOptionsList().map((time) => (
-                      <SelectItem key={time} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex space-x-2">
+                  <Select
+                    value={timeRange.from}
+                    onValueChange={(value) =>
+                      setTimeRange((prev) => ({ ...prev, from: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Wybierz godzinę" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {generateTimeOptionsList().map((time) => (
+                        <SelectItem key={time} value={time}>
+                          {time}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {currentPage < totalPages && (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                      }
+                      className="whitespace-nowrap"
+                    >
+                      Następna strona
+                    </Button>
+                  )}
+                </div>
               </div>
               <div className="space-y-2">
                 <span className="text-sm font-medium">Do godziny:</span>
@@ -539,19 +582,39 @@ export default function CalendarPage() {
 
                     {/* Pagination Controls */}
                     {totalPages > 1 && (
-                      <div className="flex justify-center items-center space-x-2 mt-4">
+                      <div className="flex flex-col sm:flex-row justify-center items-center gap-2 mt-4">
                         <Button
                           variant="outline"
                           onClick={() =>
                             setCurrentPage((prev) => Math.max(prev - 1, 1))
                           }
                           disabled={currentPage === 1}
+                          className="w-full sm:w-auto"
                         >
                           Poprzednia
                         </Button>
-                        <span className="text-sm">
-                          Strona {currentPage} z {totalPages}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm whitespace-nowrap">
+                            Strona {currentPage} z {totalPages}
+                          </span>
+                          {currentPage < totalPages && (
+                            <Button
+                              variant="outline"
+                              onClick={() =>
+                                setCurrentPage((prev) =>
+                                  Math.min(prev + 1, totalPages),
+                                )
+                              }
+                              className="w-full sm:w-auto"
+                            >
+                              Następna
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {currentPage < totalPages && (
+                      <div className="flex justify-center mt-2">
                         <Button
                           variant="outline"
                           onClick={() =>
@@ -559,9 +622,9 @@ export default function CalendarPage() {
                               Math.min(prev + 1, totalPages),
                             )
                           }
-                          disabled={currentPage === totalPages}
+                          className="w-full sm:w-auto"
                         >
-                          Następna
+                          Następna strona
                         </Button>
                       </div>
                     )}
@@ -575,3 +638,4 @@ export default function CalendarPage() {
     </div>
   );
 }
+
