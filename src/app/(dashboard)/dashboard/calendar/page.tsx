@@ -384,7 +384,7 @@ export default function CalendarPage() {
                       setTimeRange((prev) => ({ ...prev, from: value }))
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Wybierz godzinę" />
                     </SelectTrigger>
                     <SelectContent>
@@ -395,38 +395,29 @@ export default function CalendarPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  {currentPage < totalPages && (
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                      }
-                      className="whitespace-nowrap"
-                    >
-                      Następna strona
-                    </Button>
-                  )}
                 </div>
               </div>
               <div className="space-y-2">
                 <span className="text-sm font-medium">Do godziny:</span>
-                <Select
-                  value={timeRange.to}
-                  onValueChange={(value) =>
-                    setTimeRange((prev) => ({ ...prev, to: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Wybierz godzinę" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {generateTimeOptionsList().map((time) => (
-                      <SelectItem key={time} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex space-x-2">
+                  <Select
+                    value={timeRange.to}
+                    onValueChange={(value) =>
+                      setTimeRange((prev) => ({ ...prev, to: value }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Wybierz godzinę" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {generateTimeOptionsList().map((time) => (
+                        <SelectItem key={time} value={time}>
+                          {time}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -466,15 +457,17 @@ export default function CalendarPage() {
               <div className="text-center">Ładowanie...</div>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-center space-x-4 mb-4">
-                  <Label htmlFor="sort">Sortuj wg:</Label>
+                <div className="flex items-center space-x-4 mb-4 flex-wrap">
+                  <Label htmlFor="sort" className="flex-shrink-0">
+                    Sortuj wg:
+                  </Label>
                   <Select
                     value={sortBy}
                     onValueChange={(value: "time" | "priority") =>
                       setSortBy(value)
                     }
                   >
-                    <SelectTrigger className="w-[180px]">
+                    <SelectTrigger className="w-[180px] flex-shrink-0">
                       <SelectValue placeholder="Sortuj" />
                     </SelectTrigger>
                     <SelectContent>
@@ -483,12 +476,14 @@ export default function CalendarPage() {
                     </SelectContent>
                   </Select>
 
-                  <Label htmlFor="priorityFilter">Pokaż priorytet:</Label>
+                  <Label htmlFor="priorityFilter" className="flex-shrink-0">
+                    Pokaż priorytet:
+                  </Label>
                   <Select
                     value={priorityFilter}
                     onValueChange={setPriorityFilter}
                   >
-                    <SelectTrigger className="w-[180px]">
+                    <SelectTrigger className="w-[180px] flex-shrink-0">
                       <SelectValue placeholder="Wszystkie" />
                     </SelectTrigger>
                     <SelectContent>
@@ -613,21 +608,6 @@ export default function CalendarPage() {
                         </div>
                       </div>
                     )}
-                    {currentPage < totalPages && (
-                      <div className="flex justify-center mt-2">
-                        <Button
-                          variant="outline"
-                          onClick={() =>
-                            setCurrentPage((prev) =>
-                              Math.min(prev + 1, totalPages),
-                            )
-                          }
-                          className="w-full sm:w-auto"
-                        >
-                          Następna strona
-                        </Button>
-                      </div>
-                    )}
                   </>
                 )}
               </div>
@@ -637,5 +617,5 @@ export default function CalendarPage() {
       </div>
     </div>
   );
-}
+} //a
 
