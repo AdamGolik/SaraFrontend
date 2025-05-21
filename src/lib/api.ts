@@ -1,7 +1,6 @@
 import axios from "axios";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://rustproject.onrender.com";
+const API_URL = "https://rustproject.onrender.com";
 
 // Helper function to format date
 const formatDate = (date: string | Date): string => {
