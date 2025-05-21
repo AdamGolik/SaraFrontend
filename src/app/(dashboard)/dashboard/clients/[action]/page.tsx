@@ -128,7 +128,7 @@ interface CustomField {
 export default function ClientFormPage({
   params,
 }: {
-  params: Promise<{ action: string }>;
+  params: { action: string };
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -136,8 +136,7 @@ export default function ClientFormPage({
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [customFieldsPage, setCustomFieldsPage] = useState(1);
   const ITEMS_PER_PAGE = 5;
-  const resolvedParams = use(params);
-  const isEdit = resolvedParams.action !== "new";
+  const isEdit = params.action !== "new";
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -182,7 +181,7 @@ export default function ClientFormPage({
   const fetchClient = async () => {
     try {
       setIsLoading(true);
-      const response = await clients.getById(resolvedParams.action);
+      const response = await clients.getById(params.action);
 
       // Convert all added_description fields to custom fields
       const customFieldsArray = Object.entries(response.added_description || {})
@@ -325,7 +324,7 @@ export default function ClientFormPage({
       };
 
       if (isEdit) {
-        await clients.update(resolvedParams.action, clientData);
+        await clients.update(params.action, clientData);
         toast({
           title: "Sukces",
           description: "Klient został zaktualizowany",
