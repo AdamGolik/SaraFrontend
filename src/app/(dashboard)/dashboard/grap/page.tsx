@@ -12,6 +12,12 @@ import {
   subMonths,
   addWeeks,
   subWeeks,
+  parseISO,
+  isSameDay,
+  getHours,
+  getMinutes,
+  setHours,
+  setMinutes,
 } from "date-fns";
 import { pl } from "date-fns/locale";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +41,17 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
+  SheetClose,
 } from "@/components/ui/sheet";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -55,6 +71,9 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
+  Clock,
+  PlusCircle,
+  Move,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { clients } from "@/lib/api";
@@ -115,6 +134,23 @@ const Scheduler: React.FC = () => {
   const [editingAppointment, setEditingAppointment] =
     useState<Appointment | null>(null);
   const [showSheet, setShowSheet] = useState(false);
+  const [sidebarAppointments, setSidebarAppointments] = useState<Appointment[]>(
+    [],
+  );
+  const [selectedDateForSidebar, setSelectedDateForSidebar] =
+    useState<Date | null>(null);
+  const [draggingAppointment, setDraggingAppointment] =
+    useState<Appointment | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragTarget, setDragTarget] = useState<{
+    hour: number;
+    date: Date;
+  } | null>(null);
+  const [dragStartPos, setDragStartPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [showTimeline, setShowTimeline] = useState(false);
 
   // Get hours for the time slots (8:00 - 20:00)
   const hours = Array.from({ length: 13 }, (_, i) => i + 8);
@@ -195,6 +231,11 @@ const Scheduler: React.FC = () => {
       );
 
       setAppointments(response.clients || []);
+
+      // Update sidebar appointments if a date is selected
+      if (selectedDateForSidebar) {
+        updateSidebarAppointments(selectedDateForSidebar);
+      }
     } catch (error) {
       console.error("Failed to fetch appointments:", error);
       toast({
@@ -260,15 +301,35 @@ const Scheduler: React.FC = () => {
     });
   };
 
+  // Update sidebar appointments for a specific date
+  const updateSidebarAppointments = (date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+
+    const filteredAppointments = appointments.filter((appointment) => {
+      const appointmentDate = new Date(appointment.time_from);
+      return format(appointmentDate, "yyyy-MM-dd") === dateStr;
+    });
+
+    // Sort appointments by time
+    filteredAppointments.sort((a, b) => {
+      return new Date(a.time_from).getTime() - new Date(b.time_from).getTime();
+    });
+
+    setSidebarAppointments(filteredAppointments);
+    setShowTimeline(true);
+  };
+
   // Handle cell click to open appointment form
   const handleCellClick = (date: Date, hour: number) => {
     setSelectedDate(date);
+    setSelectedDateForSidebar(date);
+    updateSidebarAppointments(date);
 
     // Format hour with leading zero if needed
     const hourStr = hour.toString().padStart(2, "0");
     setSelectedTime(`${hourStr}:00`);
 
-    // Reset form
+    // Reset form with correct time values (preserve the exact hour that was clicked)
     form.reset({
       name: "",
       lastname: "",
@@ -292,6 +353,13 @@ const Scheduler: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  // Handle day click in month view
+  const handleDayClick = (date: Date) => {
+    setSelectedDateForSidebar(date);
+    updateSidebarAppointments(date);
+    setShowSheet(true);
+  };
+
   // Handle appointment click to edit
   const handleAppointmentClick = (
     appointment: Appointment,
@@ -299,6 +367,7 @@ const Scheduler: React.FC = () => {
   ) => {
     event.stopPropagation();
 
+    // Get exact times from the appointment
     const timeFrom = new Date(appointment.time_from);
     const timeTo = new Date(appointment.time_to);
 
@@ -307,6 +376,7 @@ const Scheduler: React.FC = () => {
       `${timeFrom.getHours().toString().padStart(2, "0")}:${timeFrom.getMinutes().toString().padStart(2, "0")}`,
     );
 
+    // Preserve the exact times when editing
     form.reset({
       name: appointment.name,
       lastname: appointment.lastname,
@@ -328,6 +398,174 @@ const Scheduler: React.FC = () => {
     setEditingAppointment(appointment);
     setShowAdditionalFields(false);
     setIsModalOpen(true);
+  };
+
+  // Mouse events for drag and drop in month view
+  const handleMonthDayMouseDown = (
+    date: Date,
+    event: React.MouseEvent,
+    appointment: Appointment,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingAppointment(appointment);
+    setIsDragging(true);
+    setDragStartPos({ x: event.clientX, y: event.clientY });
+  };
+
+  const handleMonthDayMouseUp = async (date: Date, event: React.MouseEvent) => {
+    event.preventDefault();
+
+    if (draggingAppointment && isDragging) {
+      try {
+        const timeFrom = new Date(draggingAppointment.time_from);
+        const timeTo = new Date(draggingAppointment.time_to);
+
+        // Keep the same time, just change the date
+        const newTimeFrom = new Date(date);
+        newTimeFrom.setHours(timeFrom.getHours(), timeFrom.getMinutes(), 0, 0);
+
+        const duration = timeTo.getTime() - timeFrom.getTime();
+        const newTimeTo = new Date(newTimeFrom.getTime() + duration);
+
+        // Update appointment
+        const updatedAppointment = {
+          ...draggingAppointment,
+          time_from: newTimeFrom.toISOString().split(".")[0],
+          time_to: newTimeTo.toISOString().split(".")[0],
+        };
+
+        await clients.update(draggingAppointment.uuid, updatedAppointment);
+
+        toast({
+          title: "Sukces",
+          description: "Termin został przeniesiony",
+        });
+
+        // Refresh appointments
+        fetchAppointments(true);
+      } catch (error) {
+        console.error("Failed to move appointment:", error);
+        toast({
+          title: "Błąd",
+          description: "Nie udało się przenieść terminu",
+          variant: "destructive",
+        });
+      }
+    }
+
+    // Reset drag state
+    setDraggingAppointment(null);
+    setIsDragging(false);
+    setDragStartPos(null);
+  };
+
+  const handleMonthDayMouseMove = (event: React.MouseEvent) => {
+    if (isDragging && dragStartPos) {
+      // Calculate the distance moved
+      const deltaX = Math.abs(event.clientX - dragStartPos.x);
+      const deltaY = Math.abs(event.clientY - dragStartPos.y);
+
+      // Only proceed if we've moved a significant distance (to prevent accidental drags)
+      if (deltaX > 10 || deltaY > 10) {
+        // The drag is in progress, handled by mouseup event
+      }
+    }
+  };
+
+  // Drag and drop functionality for week/day view
+  const handleDragStart = (
+    appointment: Appointment,
+    event: React.DragEvent,
+  ) => {
+    event.stopPropagation();
+    setDraggingAppointment(appointment);
+    setIsDragging(true);
+
+    // Set data on the drag event (needed for HTML5 drag and drop)
+    event.dataTransfer.setData("text/plain", appointment.uuid);
+
+    // Make the drag image semi-transparent
+    if (event.currentTarget instanceof HTMLElement) {
+      event.currentTarget.style.opacity = "0.5";
+    }
+  };
+
+  const handleDragOver = (date: Date, hour: number, e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragTarget({ date, hour });
+
+    // Set drop effect
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = async (date: Date, hour: number, e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const uuid = e.dataTransfer.getData("text/plain");
+
+    // Find the appointment by UUID
+    const appointment = appointments.find((app) => app.uuid === uuid);
+
+    if (!appointment) return;
+
+    try {
+      const timeFrom = new Date(appointment.time_from);
+      const timeTo = new Date(appointment.time_to);
+
+      // Calculate original duration
+      const durationMs = timeTo.getTime() - timeFrom.getTime();
+
+      // Get original minutes
+      const fromMinutes = timeFrom.getMinutes();
+
+      // Set new start time: dropped hour + 2h, preserving original minutes
+      const newTimeFrom = new Date(date);
+      newTimeFrom.setHours(hour + 2, fromMinutes, 0, 0);
+
+      // Set new end time using original duration
+      const newTimeTo = new Date(newTimeFrom.getTime() + durationMs);
+
+      // Prepare updated appointment data
+      const updatedAppointmentData = {
+        ...appointment,
+        time_from: newTimeFrom.toISOString().split(".")[0],
+        time_to: newTimeTo.toISOString().split(".")[0],
+      };
+
+      await clients.update(appointment.uuid, updatedAppointmentData);
+
+      toast({
+        title: "Sukces",
+        description: "Termin został przeniesiony",
+      });
+
+      fetchAppointments(true);
+    } catch (error) {
+      console.error("Failed to reschedule appointment:", error);
+      toast({
+        title: "Błąd",
+        description: "Nie udało się przenieść terminu",
+        variant: "destructive",
+      });
+    } finally {
+      setDraggingAppointment(null);
+      setIsDragging(false);
+      setDragTarget(null);
+    }
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    // Reset opacity
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = "";
+    }
+
+    setDraggingAppointment(null);
+    setIsDragging(false);
+    setDragTarget(null);
   };
 
   // Submit appointment form
@@ -391,6 +629,11 @@ const Scheduler: React.FC = () => {
 
       // Refresh appointments
       fetchAppointments(true);
+
+      // Update sidebar if needed
+      if (selectedDateForSidebar) {
+        updateSidebarAppointments(selectedDateForSidebar);
+      }
     } catch (error) {
       console.error("Failed to save appointment:", error);
       toast({
@@ -421,6 +664,11 @@ const Scheduler: React.FC = () => {
 
       // Refresh appointments
       fetchAppointments(true);
+
+      // Update sidebar if needed
+      if (selectedDateForSidebar) {
+        updateSidebarAppointments(selectedDateForSidebar);
+      }
     } catch (error) {
       console.error("Failed to delete appointment:", error);
       toast({
@@ -452,215 +700,400 @@ const Scheduler: React.FC = () => {
     setView("week");
   };
 
+  const formatAppointmentTime = (appointment: Appointment) => {
+    const timeFrom = new Date(appointment.time_from);
+    const timeTo = new Date(appointment.time_to);
+
+    return `${timeFrom.getHours().toString().padStart(2, "0")}:${timeFrom.getMinutes().toString().padStart(2, "0")} - ${timeTo.getHours().toString().padStart(2, "0")}:${timeTo.getMinutes().toString().padStart(2, "0")}`;
+  };
+
+  // Add new appointment from sidebar
+  const handleAddFromSidebar = () => {
+    if (!selectedDateForSidebar) return;
+
+    setSelectedDate(selectedDateForSidebar);
+
+    // Default to 9:00 AM for new appointments
+    const defaultHourStr = "09";
+
+    form.reset({
+      name: "",
+      lastname: "",
+      telephone: "",
+      title: "",
+      description: "",
+      startHour: defaultHourStr,
+      startMinute: "00",
+      endHour: (parseInt(defaultHourStr) + 1).toString().padStart(2, "0"), // Default end time is 1 hour later
+      endMinute: "00",
+      added_description: {
+        contact_preference: "telephone",
+        priority: "medium",
+        notes: "",
+        tags: [],
+      },
+    });
+
+    setEditingAppointment(null);
+    setShowAdditionalFields(false);
+    setIsModalOpen(true);
+  };
+
+  // Calculate timeline positions for appointments
+  const getTimelineStyles = (appointment: Appointment) => {
+    const timeFrom = new Date(appointment.time_from);
+    const timeTo = new Date(appointment.time_to);
+
+    const startHour = timeFrom.getHours();
+    const startMinute = timeFrom.getMinutes();
+    const endHour = timeTo.getHours();
+    const endMinute = timeTo.getMinutes();
+
+    // Starting position is based on hours since 8:00 AM (first time slot)
+    const startPosition = (startHour - 8) * 60 + startMinute;
+    const duration = (endHour - startHour) * 60 + (endMinute - startMinute);
+
+    return {
+      top: `${startPosition}px`,
+      height: `${duration}px`,
+    };
+  };
+
   return (
     <div className="container mx-auto px-4 py-6 bg-black text-white dark">
-      <Card className="border-none shadow-none bg-black text-white">
-        <CardHeader className="px-0">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <CardTitle className="text-2xl md:text-3xl font-bold">
-              {getHeaderTitle()}
-            </CardTitle>
-            <div className="flex items-center space-x-2 mt-4 md:mt-0">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={navigatePrevious}
-                className="bg-black border-white text-white hover:bg-gray-800"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={navigateToday}
-                className="bg-black border-white text-white hover:bg-gray-800"
-              >
-                Dzisiaj
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={navigateNext}
-                className="bg-black border-white text-white hover:bg-gray-800"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <Select
-                value={view}
-                onValueChange={(value) => setView(value as ViewType)}
-              >
-                <SelectTrigger className="w-[120px] bg-black border-white text-white">
-                  <SelectValue placeholder="Widok" />
-                </SelectTrigger>
-                <SelectContent className="bg-black border border-white text-white">
-                  <SelectItem value="month" className="hover:bg-gray-800">
-                    Miesiąc
-                  </SelectItem>
-                  <SelectItem value="week" className="hover:bg-gray-800">
-                    Tydzień
-                  </SelectItem>
-                  <SelectItem value="day" className="hover:bg-gray-800">
-                    Dzień
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="px-0 pb-0">
-          <div className="flex overflow-hidden border border-white">
-            {/* Time column - only shown for week and day views */}
-            {(view === "week" || view === "day") && (
-              <div className="w-16 flex-shrink-0 border-r border-gray-700">
-                <div className="h-12"></div>{" "}
-                {/* Empty cell for header alignment */}
-                {hours.map((hour) => (
-                  <div
-                    key={hour}
-                    className="h-20 flex items-center justify-center border-t border-gray-700"
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {/* Left sidebar with timeline (on larger screens) */}
+        {showTimeline && selectedDateForSidebar && (
+          <div className="hidden md:block md:col-span-1">
+            <Card className="border-none shadow-none bg-black text-white h-full">
+              <CardHeader>
+                <CardTitle className="text-xl">
+                  {format(selectedDateForSidebar, "EEEE, d MMMM", {
+                    locale: pl,
+                  })}
+                </CardTitle>
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold">Terminy</h3>
+                  <Button
+                    onClick={handleAddFromSidebar}
+                    size="sm"
+                    className="bg-white text-black hover:bg-gray-200"
                   >
-                    <span className="text-xs font-medium text-gray-300">{`${hour}:00`}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+                    <PlusCircle className="h-4 w-4 mr-1" />
+                    Dodaj
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {/* Timeline View */}
+                <div
+                  className="relative mt-2 border-l-2 border-gray-700 ml-6 pl-4"
+                  style={{ height: "700px" }}
+                >
+                  {/* Time markers */}
+                  {hours.map((hour) => (
+                    <div
+                      key={hour}
+                      className="absolute flex items-center"
+                      style={{ top: `${(hour - 8) * 60}px` }}
+                    >
+                      <span className="absolute -left-6 text-xs text-gray-400 bg-black px-1">
+                        {`${hour}:00`}
+                      </span>
+                      <div className="absolute -left-2 w-2 h-0.5 bg-gray-700"></div>
+                    </div>
+                  ))}
 
-            <div className="flex-grow overflow-auto">
-              {/* Grid Header */}
-              <div className="flex">
-                {view === "month"
-                  ? // Month view header (M T W T F S S)
-                    ["Pon", "Wt", "Śr", "Czw", "Pt", "Sb", "Nd"].map(
-                      (day, i) => (
-                        <div
-                          key={i}
-                          className="flex-1 h-12 flex items-center justify-center border-b border-gray-700"
-                        >
-                          <span className="text-sm font-medium text-gray-300">
-                            {day}
-                          </span>
-                        </div>
-                      ),
-                    )
-                  : // Week and day view header
-                    datesToShow.map((date, i) => (
-                      <div
-                        key={i}
-                        className={`flex-1 h-12 flex flex-col items-center justify-center border-b ${
-                          format(date, "yyyy-MM-dd") ===
-                          format(new Date(), "yyyy-MM-dd")
-                            ? "bg-gray-900"
-                            : ""
-                        } border-gray-700`}
-                      >
-                        <span className="text-xs text-gray-400">
-                          {format(date, "EEE", { locale: pl })}
-                        </span>
-                        <span className="text-sm font-medium">
-                          {format(date, "d")}
-                        </span>
-                      </div>
-                    ))}
-              </div>
-
-              {/* Grid Content */}
-              {view === "month" ? (
-                // Month view grid
-                <div className="grid grid-cols-7 auto-rows-fr">
-                  {datesToShow.map((date, i) => {
-                    const isCurrentMonth =
-                      date.getMonth() === currentDate.getMonth();
-                    const isToday =
-                      format(date, "yyyy-MM-dd") ===
-                      format(new Date(), "yyyy-MM-dd");
-                    const dateAppointments = getAppointmentsForDate(date);
-
+                  {/* Appointments */}
+                  {sidebarAppointments.map((appointment) => {
+                    const styles = getTimelineStyles(appointment);
                     return (
                       <div
-                        key={i}
-                        className={`h-28 p-1 border-t border-l ${i % 7 === 6 ? "border-r" : ""} ${
-                          isToday ? "bg-gray-900" : "bg-black"
-                        } ${!isCurrentMonth ? "text-gray-600" : "text-gray-900"} border-gray-700`}
-                        onClick={() => goToDateView(date)}
+                        key={appointment.uuid}
+                        className="absolute left-4 right-0 bg-white bg-opacity-10 border border-gray-700 rounded-md p-2 cursor-pointer hover:bg-opacity-20"
+                        style={{
+                          top: styles.top,
+                          height: styles.height,
+                          minHeight: "30px",
+                        }}
+                        onClick={() =>
+                          handleAppointmentClick(
+                            appointment,
+                            {} as React.MouseEvent,
+                          )
+                        }
                       >
-                        <div className="text-right mb-1">
-                          <span className="text-xs font-medium">
-                            {format(date, "d")}
-                          </span>
+                        <div className="text-sm font-medium truncate">
+                          {appointment.title}
                         </div>
-                        <div className="space-y-1">
-                          {dateAppointments.slice(0, 2).map((app, idx) => (
-                            <div
-                              key={idx}
-                              className="bg-white bg-opacity-10 rounded px-1 py-0.5 text-xs truncate cursor-pointer"
-                              title={`${app.title} - ${app.name} ${app.lastname}`}
-                              onClick={(e) => handleAppointmentClick(app, e)}
-                            >
-                              {format(new Date(app.time_from), "HH:mm")}{" "}
-                              {app.title}
-                            </div>
-                          ))}
-                          {dateAppointments.length > 2 && (
-                            <div className="text-xs text-gray-400">
-                              +{dateAppointments.length - 2} więcej
-                            </div>
-                          )}
+                        <div className="text-xs truncate">
+                          {appointment.name} {appointment.lastname}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {formatAppointmentTime(appointment)}
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              ) : (
-                // Week and day view grid
-                <div className="relative">
-                  <div className="flex">
-                    {datesToShow.map((date, dateIndex) => (
-                      <div key={dateIndex} className="flex-1">
-                        {hours.map((hour) => {
-                          const cellAppointments =
-                            getAppointmentsForDateAndHour(date, hour);
-                          return (
-                            <div
-                              key={`${dateIndex}-${hour}`}
-                              className="h-20 border-t border-l border-gray-700 relative group bg-black hover:bg-gray-900"
-                              onClick={() => handleCellClick(date, hour)}
-                            >
-                              {cellAppointments.map((app, idx) => (
-                                <div
-                                  key={idx}
-                                  className="bg-gray-600 bg-opacity-10 rounded m-1 p-1 text-xs h-[calc(100%-0.5rem)] overflow-hidden cursor-pointer"
-                                  title={`${app.title} - ${app.name} ${app.lastname}`}
-                                  onClick={(e) =>
-                                    handleAppointmentClick(app, e)
-                                  }
-                                >
-                                  <div className="font-semibold truncate">
-                                    {app.title}
-                                  </div>
-                                  <div className="truncate">
-                                    {app.name} {app.lastname}
-                                  </div>
-                                </div>
-                              ))}
-                              {cellAppointments.length === 0 && (
-                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <span className="w-5 h-5 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-white">
-                                    +
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Main Calendar */}
+        <div className={`${showTimeline ? "md:col-span-3" : "md:col-span-4"}`}>
+          <Card className="border-none shadow-none bg-black text-white">
+            <CardHeader className="px-0">
+              <div className="flex flex-col md:flex-row justify-between items-center">
+                <CardTitle className="text-2xl md:text-3xl font-bold">
+                  {getHeaderTitle()}
+                </CardTitle>
+                <div className="flex items-center space-x-2 mt-4 md:mt-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={navigatePrevious}
+                    className="bg-black border-white text-white hover:bg-gray-800"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={navigateToday}
+                    className="bg-black border-white text-white hover:bg-gray-800"
+                  >
+                    Dzisiaj
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={navigateNext}
+                    className="bg-black border-white text-white hover:bg-gray-800"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Select
+                    value={view}
+                    onValueChange={(value) => setView(value as ViewType)}
+                  >
+                    <SelectTrigger className="w-[120px] bg-black border-white text-white">
+                      <SelectValue placeholder="Widok" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-black border border-white text-white">
+                      <SelectItem value="month" className="hover:bg-gray-800">
+                        Miesiąc
+                      </SelectItem>
+                      <SelectItem value="week" className="hover:bg-gray-800">
+                        Tydzień
+                      </SelectItem>
+                      <SelectItem value="day" className="hover:bg-gray-800">
+                        Dzień
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="px-0 pb-0">
+              <div className="flex overflow-hidden border border-white">
+                {/* Time column - only shown for week and day views */}
+                {(view === "week" || view === "day") && (
+                  <div className="w-16 flex-shrink-0 border-r border-gray-700">
+                    <div className="h-12"></div>{" "}
+                    {/* Empty cell for header alignment */}
+                    {hours.map((hour) => (
+                      <div
+                        key={hour}
+                        className="h-20 flex items-center justify-center border-t border-gray-700"
+                      >
+                        <span className="text-xs font-medium text-gray-300">{`${hour}:00`}</span>
                       </div>
                     ))}
                   </div>
+                )}
+
+                <div className="flex-grow overflow-auto">
+                  {/* Grid Header */}
+                  <div className="flex">
+                    {view === "month"
+                      ? // Month view header (M T W T F S S)
+                        ["Pon", "Wt", "Śr", "Czw", "Pt", "Sb", "Nd"].map(
+                          (day, i) => (
+                            <div
+                              key={i}
+                              className="flex-1 h-12 flex items-center justify-center border-b border-gray-700"
+                            >
+                              <span className="text-sm font-medium text-gray-300">
+                                {day}
+                              </span>
+                            </div>
+                          ),
+                        )
+                      : // Week and day view header
+                        datesToShow.map((date, i) => (
+                          <div
+                            key={i}
+                            className={`flex-1 h-12 flex flex-col items-center justify-center border-b ${
+                              format(date, "yyyy-MM-dd") ===
+                              format(new Date(), "yyyy-MM-dd")
+                                ? "bg-gray-900"
+                                : ""
+                            } border-gray-700`}
+                          >
+                            <span className="text-xs text-gray-400">
+                              {format(date, "EEE", { locale: pl })}
+                            </span>
+                            <span className="text-sm font-medium">
+                              {format(date, "d")}
+                            </span>
+                          </div>
+                        ))}
+                  </div>
+
+                  {/* Grid Content */}
+                  {view === "month" ? (
+                    // Month view grid
+                    <div className="grid grid-cols-7 auto-rows-fr">
+                      {datesToShow.map((date, i) => {
+                        const isCurrentMonth =
+                          date.getMonth() === currentDate.getMonth();
+                        const isToday =
+                          format(date, "yyyy-MM-dd") ===
+                          format(new Date(), "yyyy-MM-dd");
+                        const dateAppointments = getAppointmentsForDate(date);
+
+                        return (
+                          <div
+                            key={i}
+                            className={`h-28 p-1 border-t border-l ${i % 7 === 6 ? "border-r" : ""} ${
+                              isToday ? "bg-gray-900" : "bg-black"
+                            } ${!isCurrentMonth ? "text-gray-600" : "text-gray-300"} border-gray-700`}
+                            onClick={() => handleDayClick(date)}
+                            onMouseMove={handleMonthDayMouseMove}
+                            onMouseUp={(e) => handleMonthDayMouseUp(date, e)}
+                          >
+                            <div className="text-right mb-1">
+                              <span className="text-xs font-medium">
+                                {format(date, "d")}
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              {dateAppointments.slice(0, 2).map((app, idx) => (
+                                <div
+                                  key={idx}
+                                  className={`bg-white bg-opacity-10 rounded px-1 py-0.5 text-xs truncate cursor-move ${
+                                    draggingAppointment?.uuid === app.uuid
+                                      ? "opacity-50"
+                                      : ""
+                                  }`}
+                                  title={`${app.title} - ${app.name} ${app.lastname}`}
+                                  onMouseDown={(e) =>
+                                    handleMonthDayMouseDown(date, e, app)
+                                  }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAppointmentClick(app, e);
+                                  }}
+                                >
+                                  <div className="flex items-center">
+                                    <Move className="h-3 w-3 mr-1" />
+                                    <span>
+                                      {format(new Date(app.time_from), "HH:mm")}{" "}
+                                      {app.title}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                              {dateAppointments.length > 2 && (
+                                <div className="text-xs text-gray-400">
+                                  +{dateAppointments.length - 2} więcej
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    // Week and day view grid
+                    <div className="relative">
+                      <div className="flex">
+                        {datesToShow.map((date, dateIndex) => (
+                          <div key={dateIndex} className="flex-1">
+                            {hours.map((hour) => {
+                              const cellAppointments =
+                                getAppointmentsForDateAndHour(date, hour);
+                              return (
+                                <div
+                                  key={`${dateIndex}-${hour}`}
+                                  className={`h-20 border-t border-l border-gray-700 relative group bg-black hover:bg-gray-900 ${
+                                    dragTarget &&
+                                    dragTarget.hour === hour &&
+                                    isSameDay(dragTarget.date, date)
+                                      ? "bg-gray-700 bg-opacity-30"
+                                      : ""
+                                  }`}
+                                  onClick={() => handleCellClick(date, hour)}
+                                  onDragOver={(e) =>
+                                    handleDragOver(date, hour, e)
+                                  }
+                                  onDrop={(e) => handleDrop(date, hour, e)}
+                                >
+                                  {cellAppointments.map((app, idx) => (
+                                    <div
+                                      key={idx}
+                                      className="bg-gray-400 bg-opacity-10 rounded m-1 p-1 text-xs h-[calc(100%-0.5rem)] overflow-hidden cursor-move"
+                                      title={`${app.title} - ${app.name} ${app.lastname}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleAppointmentClick(app, e);
+                                      }}
+                                      draggable
+                                      onDragStart={(e) =>
+                                        handleDragStart(app, e)
+                                      }
+                                      onDragEnd={handleDragEnd}
+                                    >
+                                      <div className="font-semibold truncate flex items-center">
+                                        <Move className="h-3 w-3 mr-1 inline-block" />
+                                        <span>{app.title}</span>
+                                      </div>
+                                      <div className="truncate">
+                                        {app.name} {app.lastname}
+                                      </div>
+                                      <div className="text-xs text-gray-300 mt-1">
+                                        {format(
+                                          new Date(app.time_from),
+                                          "HH:mm",
+                                        )}{" "}
+                                        -{" "}
+                                        {format(new Date(app.time_to), "HH:mm")}
+                                      </div>
+                                    </div>
+                                  ))}
+                                  {cellAppointments.length === 0 && (
+                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <span className="w-5 h-5 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-white">
+                                        +
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {/* Appointment Form Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
@@ -1078,8 +1511,84 @@ const Scheduler: React.FC = () => {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Side panel for showing appointments on a specific day (mobile) */}
+      <Drawer open={showSheet} onOpenChange={setShowSheet}>
+        <DrawerContent className="bg-black text-white border-t border-gray-700">
+          <DrawerHeader>
+            <DrawerTitle className="text-xl">
+              {selectedDateForSidebar &&
+                format(selectedDateForSidebar, "EEEE, d MMMM yyyy", {
+                  locale: pl,
+                })}
+            </DrawerTitle>
+          </DrawerHeader>
+          <div className="p-4 max-h-96 overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Terminy</h3>
+              <Button
+                onClick={handleAddFromSidebar}
+                size="sm"
+                className="bg-white text-black hover:bg-gray-200"
+              >
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Dodaj
+              </Button>
+            </div>
+
+            {sidebarAppointments.length > 0 ? (
+              <div className="space-y-2">
+                {sidebarAppointments.map((appointment) => (
+                  <div
+                    key={appointment.uuid}
+                    className="p-3 border border-gray-700 rounded-md hover:bg-gray-900 cursor-pointer"
+                    onClick={() => {
+                      handleAppointmentClick(
+                        appointment,
+                        {} as React.MouseEvent,
+                      );
+                      setShowSheet(false);
+                    }}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">{appointment.title}</span>
+                      <span className="text-sm text-gray-400">
+                        {formatAppointmentTime(appointment)}
+                      </span>
+                    </div>
+                    <div>
+                      {appointment.name} {appointment.lastname}
+                    </div>
+                    {appointment.description && (
+                      <div className="text-sm text-gray-300 mt-1 line-clamp-2">
+                        {appointment.description}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                Brak zaplanowanych terminów na ten dzień
+              </div>
+            )}
+          </div>
+          <DrawerFooter>
+            <DrawerClose asChild>
+              <Button
+                variant="outline"
+                className="bg-black border-white text-white hover:bg-gray-900"
+              >
+                Zamknij
+              </Button>
+            </DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 };
 
 export default Scheduler;
+
+
