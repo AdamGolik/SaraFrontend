@@ -832,7 +832,7 @@ const Scheduler: React.FC = () => {
       {/* Booksy-style header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 py-2 md:py-4 mb-2 px-2 sm:px-4 bg-black sm:bg-transparent sticky top-0 z-30 rounded-b-xl sm:rounded-none shadow-md sm:shadow-none">
         <div className="flex items-center gap-2 justify-center">
-          <Button
+            <Button
             variant="ghost"
             size="icon"
             onClick={navigatePrevious}
@@ -1548,21 +1548,32 @@ const Scheduler: React.FC = () => {
                           <FormLabel>Tagi (oddzielone przecinkami)</FormLabel>
                           <FormControl>
                             <Input
-                              value={
-                                Array.isArray(field.value)
-                                  ? field.value.join(", ")
-                                  : ""
-                              }
+                              value={typeof field.value === 'string' ? field.value : Array.isArray(field.value) ? field.value.join(", ") : ""}
                               onChange={(e) => {
-                                const tags = e.target.value
-                                  .split(",")
-                                  .map((tag) => tag.trim())
-                                  .filter(Boolean);
+                                const inputValue = e.target.value;
+                                field.onChange(inputValue);
+                              }}
+                              onBlur={(e) => {
+                                const inputValue = e.target.value;
+                                const tags = inputValue.split(",").map(tag => tag.trim()).filter(Boolean);
                                 field.onChange(tags);
                               }}
+                              placeholder="Wpisz tagi oddzielone przecinkami"
                               className="bg-black border-gray-700 text-white"
                             />
                           </FormControl>
+                          {Array.isArray(field.value) && field.value.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {field.value.map((tag, i) => (
+                                <span
+                                  key={i}
+                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           <FormMessage />
                         </FormItem>
                       )}

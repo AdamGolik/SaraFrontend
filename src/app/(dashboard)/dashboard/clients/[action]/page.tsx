@@ -299,45 +299,26 @@ export default function ClientFormPage({
   const handleCustomFieldValueChange = (index: number, value: string) => {
     const field = customFields[index];
     let newValue: string | string[] = value;
-    if (type === "array") {
-      if (typeof field.value === "string") {
-        newValue = field.value
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean);
-      } else if (!Array.isArray(field.value)) {
-        newValue = [];
-      }
-    } else if (type === "string") {
-      if (Array.isArray(field.value)) {
-        newValue = field.value.join(", ");
-      } else if (typeof field.value !== "string") {
-        newValue = "";
-      }
-    } else if (type === "number") {
-      if (typeof field.value === "string") {
-        newValue = field.value.replace(/[^0-9.-]/g, "");
-      } else if (Array.isArray(field.value)) {
-        newValue = "";
-      }
+    
+    if (field.type === "array") {
+      newValue = value;
+    } else if (field.type === "number") {
+      newValue = value.replace(/[^0-9.-]/g, "");
     }
+    
     updateCustomField(index, { ...field, value: newValue });
   };
 
-  const handleCustomFieldTypeChange = (
-    index: number,
-    type: "string" | "array" | "number",
-  ) => {
+  const handleCustomFieldTypeChange = (index: number, type: "string" | "array" | "number") => {
     const field = customFields[index];
-    let newValue: string | string[] = field.value;
-    if (type === "array" && typeof newValue === "string") {
-      newValue = newValue
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
-    } else if (type === "string" && Array.isArray(newValue)) {
-      newValue = newValue.join(", ");
+    let newValue: string | string[] = "";
+    
+    if (type === "array") {
+      newValue = "";
+    } else if (type === "number") {
+      newValue = "";
     }
+    
     updateCustomField(index, { ...field, type, value: newValue });
   };
 
@@ -347,7 +328,13 @@ export default function ClientFormPage({
       const customFieldsObject = customFields.reduce(
         (acc, { key, value, type }) => {
           if (key && value) {
-            acc[key] = type === "number" ? Number(value) : value;
+            if (type === "array") {
+              acc[key] = typeof value === 'string' ? value.split(",").map(item => item.trim()).filter(Boolean) : value;
+            } else if (type === "number") {
+              acc[key] = Number(value);
+            } else {
+              acc[key] = value;
+            }
           }
           return acc;
         },
@@ -758,21 +745,31 @@ export default function ClientFormPage({
                       <FormLabel>Tagi (oddzielone przecinkami)</FormLabel>
                       <FormControl>
                         <Input
-                          {...field}
-                          value={
-                            Array.isArray(field.value)
-                              ? field.value.join(", ")
-                              : ""
-                          }
+                          value={typeof field.value === 'string' ? field.value : Array.isArray(field.value) ? field.value.join(", ") : ""}
                           onChange={(e) => {
-                            const tags = e.target.value
-                              .split(",")
-                              .map((tag) => tag.trim())
-                              .filter(Boolean);
+                            const inputValue = e.target.value;
+                            field.onChange(inputValue);
+                          }}
+                          onBlur={(e) => {
+                            const inputValue = e.target.value;
+                            const tags = inputValue.split(",").map(tag => tag.trim()).filter(Boolean);
                             field.onChange(tags);
                           }}
+                          placeholder="Wpisz tagi oddzielone przecinkami"
                         />
                       </FormControl>
+                      {Array.isArray(field.value) && field.value.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {field.value.map((tag, i) => (
+                            <span
+                              key={i}
+                              className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -806,20 +803,12 @@ export default function ClientFormPage({
                         <Input
                           placeholder="Nazwa pola"
                           value={field.key}
-                          onChange={(e) =>
-                            updateCustomField(index, {
-                              ...field,
-                              key: e.target.value,
-                            })
-                          }
+                          onChange={(e) => updateCustomField(index, { ...field, key: e.target.value })}
                           className="flex-1"
                         />
                         <Select
                           value={field.type}
-                          onValueChange={(
-                            value: "string" | "array" | "number",
-                          ) => handleCustomFieldTypeChange(index, value)}
-                          className="w-full sm:w-[180px]"
+                          onValueChange={(value: "string" | "array" | "number") => handleCustomFieldTypeChange(index, value)}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Typ pola" />
@@ -844,43 +833,27 @@ export default function ClientFormPage({
                         <div className="space-y-2">
                           <Input
                             placeholder="Wartości (oddzielone przecinkami)"
-                            value={
-                              Array.isArray(field.value)
-                                ? field.value.join(", ")
-                                : field.value
-                            }
-                            onChange={(e) =>
-                              handleCustomFieldValueChange(
-                                index,
-                                e.target.value,
-                              )
-                            }
+                            value={typeof field.value === 'string' ? field.value : Array.isArray(field.value) ? field.value.join(", ") : ""}
+                            onChange={(e) => handleCustomFieldValueChange(index, e.target.value)}
                           />
-                          {Array.isArray(field.value) &&
-                            field.value.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {field.value.map((item, i) => (
-                                  <span
-                                    key={i}
-                                    className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
-                                  >
-                                    {item}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
+                          {Array.isArray(field.value) && field.value.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {field.value.map((item, i) => (
+                                <span
+                                  key={i}
+                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                                >
+                                  {item}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <Input
-                          placeholder={
-                            field.type === "number"
-                              ? "Wprowadź liczbę"
-                              : "Wprowadź wartość"
-                          }
+                          placeholder={field.type === "number" ? "Wprowadź liczbę" : "Wprowadź wartość"}
                           value={field.value}
-                          onChange={(e) =>
-                            handleCustomFieldValueChange(index, e.target.value)
-                          }
+                          onChange={(e) => handleCustomFieldValueChange(index, e.target.value)}
                           type={field.type === "number" ? "number" : "text"}
                         />
                       )}

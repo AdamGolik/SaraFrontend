@@ -9,7 +9,7 @@ const formatDate = (date: string | Date): string => {
 };
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: API_URL, 
   headers: {
     "Content-Type": "application/json",
   },
