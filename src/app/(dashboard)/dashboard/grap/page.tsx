@@ -151,6 +151,7 @@ const Scheduler: React.FC = () => {
     y: number;
   } | null>(null);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [expandedAppointmentId, setExpandedAppointmentId] = useState<string | null>(null);
 
   // Get hours for the time slots (8:00 - 20:00)
   const hours = Array.from({ length: 13 }, (_, i) => i + 8); // 8 → 20
@@ -787,12 +788,49 @@ const Scheduler: React.FC = () => {
   };
 
   // Add long press support for month view day cells
-  const LONG_PRESS_DURATION = 500; // ms
+  const LONG_PRESS_DURATION = 400; // ms
+
+  // In appointment tile (day/week view):
+  const handleAppointmentClickMobile = (
+    appointment: Appointment,
+    e: React.MouseEvent | React.TouchEvent,
+  ) => {
+    if (window.innerWidth < 640) {
+      // mobile: expand details
+      setExpandedAppointmentId(appointment.uuid === expandedAppointmentId ? null : appointment.uuid);
+    } else {
+      handleAppointmentClick(appointment, e);
+    }
+  };
+
+  // In month view cell:
+  let pressTimer: NodeJS.Timeout | null = null;
+  let tapCount = 0;
+  const handleMobileDayTouchStart = (date: Date) => (e: React.TouchEvent) => {
+    if (window.innerWidth < 640) {
+      tapCount++;
+      if (tapCount === 1) {
+        pressTimer = setTimeout(() => {
+          goToDateView(date); // long press: go to week
+          tapCount = 0;
+        }, LONG_PRESS_DURATION);
+      } else if (tapCount === 2) {
+        if (pressTimer) clearTimeout(pressTimer);
+        handleDayClick(date); // double long press: open panel
+        tapCount = 0;
+      }
+    }
+  };
+  const handleMobileDayTouchEnd = () => (e: React.TouchEvent) => {
+    if (window.innerWidth < 640 && pressTimer) {
+      clearTimeout(pressTimer);
+    }
+  };
 
   return (
-    <div className="container mx-auto px-0 sm:px-2 md:px-4 py-2 md:py-6 bg-black text-white min-h-screen w-full overflow-x-hidden">
+    <div className="container mx-auto px-0 sm:px-2 md:px-4 py-2 md:py-6 bg-black text-white min-h-screen w-full overflow-x-hidden rounded-none sm:rounded-xl shadow-none sm:shadow-lg">
       {/* Booksy-style header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 py-2 md:py-4 mb-2 px-2 sm:px-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 py-2 md:py-4 mb-2 px-2 sm:px-4 bg-black sm:bg-transparent sticky top-0 z-30 rounded-b-xl sm:rounded-none shadow-md sm:shadow-none">
         <div className="flex items-center gap-2 justify-center">
           <Button
             variant="ghost"
@@ -818,25 +856,41 @@ const Scheduler: React.FC = () => {
           <Button
             variant={view === 'day' ? 'default' : 'outline'}
             onClick={() => setView('day')}
-            className={view === 'day' ? 'bg-white text-black' : ''}
+            className={`w-full sm:w-auto text-base sm:text-sm py-3 sm:py-2 rounded-xl sm:rounded-lg ${view === 'day' ? 'bg-white text-black' : ''}`}
           >
             Dzień
           </Button>
           <Button
             variant={view === 'week' ? 'default' : 'outline'}
             onClick={() => setView('week')}
-            className={view === 'week' ? 'bg-white text-black' : ''}
+            className={`w-full sm:w-auto text-base sm:text-sm py-3 sm:py-2 rounded-xl sm:rounded-lg ${view === 'week' ? 'bg-white text-black' : ''}`}
           >
             Tydzień
           </Button>
           <Button
             variant={view === 'month' ? 'default' : 'outline'}
             onClick={() => setView('month')}
-            className={view === 'month' ? 'bg-white text-black' : ''}
+            className={`w-full sm:w-auto text-base sm:text-sm py-3 sm:py-2 rounded-xl sm:rounded-lg ${view === 'month' ? 'bg-white text-black' : ''}`}
           >
             Miesiąc
           </Button>
         </div>
+      </div>
+      <div className="flex gap-2 mb-4 sm:hidden">
+        <Button
+          className={`flex-1 py-3 rounded-xl text-lg ${view === 'day' ? 'bg-white text-black' : 'bg-gray-800 text-white'}`}
+          onClick={() => setView('day')}
+          variant={view === 'day' ? 'default' : 'outline'}
+        >
+          Dzień
+        </Button>
+        <Button
+          className={`flex-1 py-3 rounded-xl text-lg ${view === 'week' ? 'bg-white text-black' : 'bg-gray-800 text-white'}`}
+          onClick={() => setView('week')}
+          variant={view === 'week' ? 'default' : 'outline'}
+        >
+          Tydzień
+        </Button>
       </div>
       <div className="grid grid-cols-1 gap-4 md:gap-6 w-full">
         {/* Main Calendar */}
@@ -872,7 +926,7 @@ const Scheduler: React.FC = () => {
                 )}
                 <div className="flex-grow overflow-x-auto w-full">
                   {/* Grid Header */}
-                  <div className="flex min-w-[600px] sm:min-w-full">
+                  <div className="flex min-w-[600px] sm:min-w-full text-base sm:text-sm">
                     {view === "month"
                       ? ["Pon", "Wt", "Śr", "Czw", "Pt", "Sb", "Nd"].map((day, i) => (
                           <div
@@ -884,23 +938,46 @@ const Scheduler: React.FC = () => {
                             </span>
                           </div>
                         ))
-                      : datesToShow.map((date, i) => (
-                          <div
-                            key={i}
-                            className={`flex-1 h-10 sm:h-12 flex flex-col items-center justify-center border-b ${
-                              format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
-                                ? "bg-blue-900/30"
-                                : "bg-black"
-                            } border-gray-700 min-w-[60px] sm:min-w-[90px] md:min-w-[120px]`}
-                          >
-                            <span className="text-[10px] sm:text-xs text-gray-400">
-                              {format(date, "EEE", { locale: pl })}
-                            </span>
-                            <span className="text-xs sm:text-sm font-medium">
-                              {format(date, "d")}
-                            </span>
-                          </div>
-                        ))}
+                      : datesToShow.map((date, i) => {
+                          let pressTimer: NodeJS.Timeout | null = null;
+                          const handleMobileDayTouchStart = (e: React.TouchEvent) => {
+                            if (window.innerWidth < 640) {
+                              tapCount++;
+                              if (tapCount === 1) {
+                                pressTimer = setTimeout(() => {
+                                  goToDateView(date); // long press: go to week
+                                  tapCount = 0;
+                                }, LONG_PRESS_DURATION);
+                              } else if (tapCount === 2) {
+                                if (pressTimer) clearTimeout(pressTimer);
+                                handleDayClick(date); // double long press: open panel
+                                tapCount = 0;
+                              }
+                            }
+                          };
+                          const handleMobileDayTouchEnd = (e: React.TouchEvent) => {
+                            if (window.innerWidth < 640 && pressTimer) {
+                              clearTimeout(pressTimer);
+                            }
+                          };
+                          return (
+                            <div
+                              key={i}
+                              className={`flex-1 h-10 sm:h-12 flex flex-col items-center justify-center border-b ${
+                                format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
+                                  ? "bg-blue-900/30"
+                                  : "bg-black"
+                              } border-gray-700 min-w-[60px] sm:min-w-[90px] md:min-w-[120px]`}
+                            >
+                              <span className="text-[10px] sm:text-xs text-gray-400">
+                                {format(date, "EEE", { locale: pl })}
+                              </span>
+                              <span className="text-xs sm:text-sm font-medium">
+                                {format(date, "d")}
+                              </span>
+                            </div>
+                          );
+                        })}
                   </div>
                   {/* Grid Content */}
                   {view === "month" ? (
@@ -911,36 +988,26 @@ const Scheduler: React.FC = () => {
                         const isToday = format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
                         const dateAppointments = getAppointmentsForDate(date);
                         let pressTimer: NodeJS.Timeout | null = null;
-                        let pressed = false;
+                        let tapCount = 0;
                         // Handlers for long press
                         const handlePointerDown = (e: React.PointerEvent) => {
-                          pressed = false;
                           pressTimer = setTimeout(() => {
-                            pressed = true;
                             handleDayClick(date);
                           }, LONG_PRESS_DURATION);
                         };
                         const handlePointerUp = (e: React.PointerEvent) => {
                           if (pressTimer) clearTimeout(pressTimer);
-                          if (!pressed) {
-                            goToDateView(date);
-                          }
                         };
                         const handlePointerLeave = (e: React.PointerEvent) => {
                           if (pressTimer) clearTimeout(pressTimer);
                         };
                         const handleTouchStart = (e: React.TouchEvent) => {
-                          pressed = false;
                           pressTimer = setTimeout(() => {
-                            pressed = true;
                             handleDayClick(date);
                           }, LONG_PRESS_DURATION);
                         };
                         const handleTouchEnd = (e: React.TouchEvent) => {
                           if (pressTimer) clearTimeout(pressTimer);
-                          if (!pressed) {
-                            goToDateView(date);
-                          }
                         };
                         const handleTouchCancel = (e: React.TouchEvent) => {
                           if (pressTimer) clearTimeout(pressTimer);
@@ -948,12 +1015,13 @@ const Scheduler: React.FC = () => {
                         return (
                           <div
                             key={i}
-                            className={`h-32 sm:h-28 p-2 sm:p-1 border-t border-l ${i % 7 === 6 ? "border-r" : ""} ${isToday ? "bg-gray-900" : "bg-black"} ${!isCurrentMonth ? "text-gray-600" : "text-gray-300"} border-gray-700 min-w-[120px]`}
+                            className={`h-36 sm:h-28 p-3 sm:p-1 border-t border-l ${i % 7 === 6 ? "border-r" : ""} ${isToday ? "bg-blue-900/20" : "bg-black"} ${!isCurrentMonth ? "text-gray-500" : "text-gray-200"} border-gray-700 min-w-[120px] rounded-xl sm:rounded-none transition-colors duration-200 ease-in-out cursor-pointer hover:bg-blue-900/30`}
+                            onClick={() => goToDateView(date)}
                             onPointerDown={handlePointerDown}
                             onPointerUp={handlePointerUp}
                             onPointerLeave={handlePointerLeave}
-                            onTouchStart={handleTouchStart}
-                            onTouchEnd={handleTouchEnd}
+                            onTouchStart={handleMobileDayTouchStart(date)}
+                            onTouchEnd={handleMobileDayTouchEnd()}
                             onTouchCancel={handleTouchCancel}
                             style={{ touchAction: 'manipulation' }}
                           >
@@ -969,11 +1037,27 @@ const Scheduler: React.FC = () => {
                                 return (
                                   <div
                                     key={idx}
-                                    className={`${colorClass} rounded px-2 py-1 text-sm truncate cursor-pointer`}
+                                    className={`${colorClass} rounded-xl px-3 py-2 text-base truncate cursor-pointer shadow-md mb-1`}
                                     title={`${app.title} - ${app.name} ${app.lastname}`}
                                     onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAppointmentClick(app, e);
+                                      if (window.innerWidth < 640) {
+                                        // mobile: expand details
+                                        setExpandedAppointmentId(app.uuid === expandedAppointmentId ? null : app.uuid);
+                                      } else {
+                                        handleAppointmentClick(app, e);
+                                      }
+                                    }}
+                                    onTouchStart={(e) => {
+                                      if (window.innerWidth < 640) {
+                                        pressTimer = setTimeout(() => {
+                                          handleAppointmentClick(app, e);
+                                        }, LONG_PRESS_DURATION);
+                                      }
+                                    }}
+                                    onTouchEnd={(e) => {
+                                      if (window.innerWidth < 640 && pressTimer) {
+                                        clearTimeout(pressTimer);
+                                      }
                                     }}
                                   >
                                     <div className="flex items-center">
@@ -1006,7 +1090,7 @@ const Scheduler: React.FC = () => {
                               return (
                                 <div
                                   key={`${dateIndex}-${hour}`}
-                                  className={`h-28 sm:h-20 border-t border-l border-gray-700 relative group bg-black hover:bg-gray-900 ${dragTarget && dragTarget.hour === hour && isSameDay(dragTarget.date, date) ? "bg-blue-900/20" : ""} px-2 sm:px-0`}
+                                  className={`h-32 sm:h-20 border-t border-l border-gray-700 relative group bg-black hover:bg-gray-900 ${dragTarget && dragTarget.hour === hour && isSameDay(dragTarget.date, date) ? "bg-blue-900/20" : ""} px-3 sm:px-0 rounded-xl sm:rounded-none transition-colors duration-200 ease-in-out`}
                                   onClick={() => handleCellClick(date, hour)}
                                   onDragOver={(e) => handleDragOver(date, hour, e)}
                                   onDrop={(e) => handleDrop(date, hour, e)}
@@ -1032,19 +1116,35 @@ const Scheduler: React.FC = () => {
                                     const needsExpansion = duration > 60 || startTime.getMinutes() > 0 || endTime.getMinutes() > 0;
                                     const priority = app.added_description?.priority || 'medium';
                                     const colorClass = getPriorityColor(priority);
+                                    let appPressTimer: NodeJS.Timeout | null = null;
                                     return (
                                       <div
                                         key={idx}
-                                        className={`${colorClass} rounded-lg shadow-md p-3 sm:p-2 text-white cursor-pointer absolute left-1 right-1 group text-base sm:text-sm ${view === 'day' ? 'hover:scale-101 transition-transform duration-200 ease-in-out hover:z-20' : view === 'week' ? 'hover:scale-105 transition-transform duration-200 ease-in-out hover:z-20' : ''}`}
+                                        className={`${colorClass} rounded-xl shadow-lg p-4 sm:p-2 text-white cursor-pointer absolute left-2 right-2 group text-lg sm:text-sm ${view === 'day' ? 'hover:scale-101 transition-transform duration-200 ease-in-out hover:z-20' : view === 'week' ? 'hover:scale-105 transition-transform duration-200 ease-in-out hover:z-20' : ''}`}
                                         style={{ height: `${height}px`, top: `${top}px` }}
                                         title={`${app.title} - ${app.name} ${app.lastname}\n${format(startTime, "HH:mm")} - ${format(endTime, "HH:mm")}`}
                                         onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleAppointmentClick(app, e);
+                                          if (window.innerWidth < 640) {
+                                            handleAppointmentClick(app, e);
+                                          } else {
+                                            handleAppointmentClick(app, e);
+                                          }
                                         }}
                                         draggable
                                         onDragStart={(e) => handleDragStart(app, e)}
                                         onDragEnd={handleDragEnd}
+                                        onTouchStart={(e) => {
+                                          if (window.innerWidth < 640) {
+                                            appPressTimer = setTimeout(() => {
+                                              handleCellClick(date, hour);
+                                            }, 400);
+                                          }
+                                        }}
+                                        onTouchEnd={(e) => {
+                                          if (window.innerWidth < 640 && appPressTimer) {
+                                            clearTimeout(appPressTimer);
+                                          }
+                                        }}
                                       >
                                         <div className="font-semibold truncate">{app.title}</div>
                                         <div className="truncate text-xs">{app.name} {app.lastname}</div>
@@ -1092,7 +1192,7 @@ const Scheduler: React.FC = () => {
 
       {/* Appointment Form Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="bg-black text-white border border-gray-700 sm:max-w-md">
+        <DialogContent className="bg-black text-white border border-gray-700 sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold">
               {editingAppointment ? "Edytuj termin" : "Nowy termin"}
@@ -1100,7 +1200,7 @@ const Scheduler: React.FC = () => {
           </DialogHeader>
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-h-[75vh] overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -1509,7 +1609,7 @@ const Scheduler: React.FC = () => {
 
       {/* Side panel for showing appointments on a specific day (mobile) */}
       <Drawer open={showSheet} onOpenChange={setShowSheet}>
-        <DrawerContent className="bg-black text-white border-t border-gray-700">
+        <DrawerContent className="bg-black text-white border-t border-gray-700 max-h-[90vh] overflow-y-auto">
           <DrawerHeader>
             <DrawerTitle className="text-xl">
               {selectedDateForSidebar &&
