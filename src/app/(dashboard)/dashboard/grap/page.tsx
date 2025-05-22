@@ -88,7 +88,7 @@ const appointmentSchema = z.object({
   name: z.string().min(2, "Imię musi mieć minimum 2 znaki"),
   lastname: z.string().min(2, "Nazwisko musi mieć minimum 2 znaki"),
   telephone: z.string().min(9, "Nieprawidłowy numer telefonu"),
-  title: z.string().min(2, "Tytuł musi mieć minimum 2 znaki"),
+  title: z.string(),
   description: z.string().optional(),
   startHour: z.string(),
   startMinute: z.string(),
@@ -153,7 +153,7 @@ const Scheduler: React.FC = () => {
   const [showTimeline, setShowTimeline] = useState(false);
 
   // Get hours for the time slots (8:00 - 20:00)
-  const hours = Array.from({ length: 13 }, (_, i) => i + 8);
+  const hours = Array.from({ length: 13 }, (_, i) => i + 8); // 8 → 20
 
   // Minutes for selection
   const minutes = Array.from({ length: 12 }, (_, i) => i * 5);
@@ -363,9 +363,11 @@ const Scheduler: React.FC = () => {
   // Handle appointment click to edit
   const handleAppointmentClick = (
     appointment: Appointment,
-    event: React.MouseEvent,
+    event?: React.MouseEvent | any,
   ) => {
-    event.stopPropagation();
+    if (event?.stopPropagation) {
+      event.stopPropagation();
+    }
 
     // Get exact times from the appointment
     const timeFrom = new Date(appointment.time_from);
@@ -578,7 +580,7 @@ const Scheduler: React.FC = () => {
       // Create a new date object for the appointment
       const appointmentDate = new Date(selectedDate);
       appointmentDate.setHours(
-        parseInt(data.startHour),
+        parseInt(data.startHour) + 2, // Dodaj +2 godziny
         parseInt(data.startMinute),
         0,
         0,
@@ -586,7 +588,12 @@ const Scheduler: React.FC = () => {
 
       // Create end time using the selected end time
       const endTime = new Date(selectedDate);
-      endTime.setHours(parseInt(data.endHour), parseInt(data.endMinute), 0, 0);
+      endTime.setHours(
+        parseInt(data.endHour) + 2, // Dodaj +2 godziny
+        parseInt(data.endMinute),
+        0,
+        0,
+      );
 
       // Prepare appointment data
       const appointmentData = {
@@ -704,6 +711,10 @@ const Scheduler: React.FC = () => {
     const timeFrom = new Date(appointment.time_from);
     const timeTo = new Date(appointment.time_to);
 
+    // Dodajemy 2 godziny
+    timeFrom.setHours(timeFrom.getHours() + 2);
+    timeTo.setHours(timeTo.getHours() + 2);
+
     return `${timeFrom.getHours().toString().padStart(2, "0")}:${timeFrom.getMinutes().toString().padStart(2, "0")} - ${timeTo.getHours().toString().padStart(2, "0")}:${timeTo.getMinutes().toString().padStart(2, "0")}`;
   };
 
@@ -750,7 +761,7 @@ const Scheduler: React.FC = () => {
     const endMinute = timeTo.getMinutes();
 
     // Starting position is based on hours since 8:00 AM (first time slot)
-    const startPosition = (startHour - 8) * 60 + startMinute;
+    const startPosition = (startHour - 4) * 60 + startMinute;
     const duration = (endHour - startHour) * 60 + (endMinute - startMinute);
 
     return {
@@ -759,187 +770,127 @@ const Scheduler: React.FC = () => {
     };
   };
 
+  // Helper: check if any appointment in an hour has minutes (not 0)
+  const hasMinuteAppointments = (date: Date, hour: number) => {
+    return getAppointmentsForDateAndHour(date, hour).some(app => {
+      const start = new Date(app.time_from);
+      const end = new Date(app.time_to);
+      return start.getMinutes() !== 0 || end.getMinutes() !== 0;
+    });
+  };
+
+  const getPriorityColor = (priority) => {
+    if (!priority) return 'bg-blue-500/80';
+    if (priority === 'high') return 'bg-red-500/80';
+    if (priority === 'low') return 'bg-green-500/80';
+    return 'bg-blue-500/80'; // medium or default
+  };
+
+  // Add long press support for month view day cells
+  const LONG_PRESS_DURATION = 500; // ms
+
   return (
-    <div className="container mx-auto px-4 py-6 bg-black text-white dark">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* Left sidebar with timeline (on larger screens) */}
-        {showTimeline && selectedDateForSidebar && (
-          <div className="hidden md:block md:col-span-1">
-            <Card className="border-none shadow-none bg-black text-white h-full">
-              <CardHeader>
-                <CardTitle className="text-xl">
-                  {format(selectedDateForSidebar, "EEEE, d MMMM", {
-                    locale: pl,
-                  })}
-                </CardTitle>
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold">Terminy</h3>
-                  <Button
-                    onClick={handleAddFromSidebar}
-                    size="sm"
-                    className="bg-white text-black hover:bg-gray-200"
-                  >
-                    <PlusCircle className="h-4 w-4 mr-1" />
-                    Dodaj
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {/* Timeline View */}
-                <div
-                  className="relative mt-2 border-l-2 border-gray-700 ml-6 pl-4"
-                  style={{ height: "700px" }}
-                >
-                  {/* Time markers */}
-                  {hours.map((hour) => (
-                    <div
-                      key={hour}
-                      className="absolute flex items-center"
-                      style={{ top: `${(hour - 8) * 60}px` }}
-                    >
-                      <span className="absolute -left-6 text-xs text-gray-400 bg-black px-1">
-                        {`${hour}:00`}
-                      </span>
-                      <div className="absolute -left-2 w-2 h-0.5 bg-gray-700"></div>
-                    </div>
-                  ))}
-
-                  {/* Appointments */}
-                  {sidebarAppointments.map((appointment) => {
-                    const styles = getTimelineStyles(appointment);
-                    return (
-                      <div
-                        key={appointment.uuid}
-                        className="absolute left-4 right-0 bg-white bg-opacity-10 border border-gray-700 rounded-md p-2 cursor-pointer hover:bg-opacity-20"
-                        style={{
-                          top: styles.top,
-                          height: styles.height,
-                          minHeight: "30px",
-                        }}
-                        onClick={() =>
-                          handleAppointmentClick(
-                            appointment,
-                            {} as React.MouseEvent,
-                          )
-                        }
-                      >
-                        <div className="text-sm font-medium truncate">
-                          {appointment.title}
-                        </div>
-                        <div className="text-xs truncate">
-                          {appointment.name} {appointment.lastname}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                          {formatAppointmentTime(appointment)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
+    <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 bg-black text-white min-h-screen">
+      {/* Booksy-style header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 py-4 mb-2">
+        <div className="flex items-center gap-2 justify-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={navigatePrevious}
+            className="rounded-full"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </Button>
+          <span className="text-xl md:text-2xl font-bold text-center min-w-[120px]">
+            {format(currentDate, 'LLLL yyyy', { locale: pl })}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={navigateNext}
+            className="rounded-full"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </Button>
+        </div>
+        <div className="flex gap-2 mt-2 md:mt-0 justify-center">
+          <Button
+            variant={view === 'day' ? 'default' : 'outline'}
+            onClick={() => setView('day')}
+            className={view === 'day' ? 'bg-white text-black' : ''}
+          >
+            Dzień
+          </Button>
+          <Button
+            variant={view === 'week' ? 'default' : 'outline'}
+            onClick={() => setView('week')}
+            className={view === 'week' ? 'bg-white text-black' : ''}
+          >
+            Tydzień
+          </Button>
+          <Button
+            variant={view === 'month' ? 'default' : 'outline'}
+            onClick={() => setView('month')}
+            className={view === 'month' ? 'bg-white text-black' : ''}
+          >
+            Miesiąc
+          </Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-6">
         {/* Main Calendar */}
-        <div className={`${showTimeline ? "md:col-span-3" : "md:col-span-4"}`}>
+        <div className="col-span-1">
           <Card className="border-none shadow-none bg-black text-white">
-            <CardHeader className="px-0">
-              <div className="flex flex-col md:flex-row justify-between items-center">
-                <CardTitle className="text-2xl md:text-3xl font-bold">
-                  {getHeaderTitle()}
-                </CardTitle>
-                <div className="flex items-center space-x-2 mt-4 md:mt-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={navigatePrevious}
-                    className="bg-black border-white text-white hover:bg-gray-800"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={navigateToday}
-                    className="bg-black border-white text-white hover:bg-gray-800"
-                  >
-                    Dzisiaj
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={navigateNext}
-                    className="bg-black border-white text-white hover:bg-gray-800"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                  <Select
-                    value={view}
-                    onValueChange={(value) => setView(value as ViewType)}
-                  >
-                    <SelectTrigger className="w-[120px] bg-black border-white text-white">
-                      <SelectValue placeholder="Widok" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-black border border-white text-white">
-                      <SelectItem value="month" className="hover:bg-gray-800">
-                        Miesiąc
-                      </SelectItem>
-                      <SelectItem value="week" className="hover:bg-gray-800">
-                        Tydzień
-                      </SelectItem>
-                      <SelectItem value="day" className="hover:bg-gray-800">
-                        Dzień
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardHeader>
             <CardContent className="px-0 pb-0">
-              <div className="flex overflow-hidden border border-white">
+              <div className="flex overflow-x-auto border border-white rounded-lg bg-black">
                 {/* Time column - only shown for week and day views */}
                 {(view === "week" || view === "day") && (
-                  <div className="w-16 flex-shrink-0 border-r border-gray-700">
-                    <div className="h-12"></div>{" "}
-                    {/* Empty cell for header alignment */}
+                  <div className="w-20 flex-shrink-0 border-r border-gray-700 bg-black">
+                    <div className="h-12"></div> {/* Empty cell for header alignment */}
                     {hours.map((hour) => (
                       <div
                         key={hour}
-                        className="h-20 flex items-center justify-center border-t border-gray-700"
+                        className="h-20 flex flex-col items-center justify-center border-t border-gray-700 relative"
                       >
-                        <span className="text-xs font-medium text-gray-300">{`${hour}:00`}</span>
+                        <span className="text-sm font-medium text-gray-300">{`${hour}:00`}</span>
+                        {/* Minute lines only if needed */}
+                        {datesToShow.some(date => hasMinuteAppointments(date, hour)) && (
+                          <div className="absolute left-0 right-0 h-full">
+                            {[15, 30, 45].map((minute) => (
+                              <div
+                                key={minute}
+                                className="absolute left-0 right-0 h-px bg-blue-400/60"
+                                style={{ top: `${(minute / 60) * 80}px` }}
+                              />
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
                 )}
-
                 <div className="flex-grow overflow-auto">
                   {/* Grid Header */}
                   <div className="flex">
                     {view === "month"
-                      ? // Month view header (M T W T F S S)
-                        ["Pon", "Wt", "Śr", "Czw", "Pt", "Sb", "Nd"].map(
-                          (day, i) => (
-                            <div
-                              key={i}
-                              className="flex-1 h-12 flex items-center justify-center border-b border-gray-700"
-                            >
-                              <span className="text-sm font-medium text-gray-300">
-                                {day}
-                              </span>
-                            </div>
-                          ),
-                        )
-                      : // Week and day view header
-                        datesToShow.map((date, i) => (
+                      ? ["Pon", "Wt", "Śr", "Czw", "Pt", "Sb", "Nd"].map((day, i) => (
+                          <div
+                            key={i}
+                            className="flex-1 h-12 flex items-center justify-center border-b border-gray-700 bg-black"
+                          >
+                            <span className="text-sm font-medium text-gray-300">
+                              {day}
+                            </span>
+                          </div>
+                        ))
+                      : datesToShow.map((date, i) => (
                           <div
                             key={i}
                             className={`flex-1 h-12 flex flex-col items-center justify-center border-b ${
-                              format(date, "yyyy-MM-dd") ===
-                              format(new Date(), "yyyy-MM-dd")
-                                ? "bg-gray-900"
-                                : ""
+                              format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
+                                ? "bg-blue-900/30"
+                                : "bg-black"
                             } border-gray-700`}
                           >
                             <span className="text-xs text-gray-400">
@@ -951,28 +902,60 @@ const Scheduler: React.FC = () => {
                           </div>
                         ))}
                   </div>
-
                   {/* Grid Content */}
                   {view === "month" ? (
                     // Month view grid
-                    <div className="grid grid-cols-7 auto-rows-fr">
+                    <div className="grid grid-cols-7 auto-rows-fr min-w-[700px] md:min-w-0">
                       {datesToShow.map((date, i) => {
-                        const isCurrentMonth =
-                          date.getMonth() === currentDate.getMonth();
-                        const isToday =
-                          format(date, "yyyy-MM-dd") ===
-                          format(new Date(), "yyyy-MM-dd");
+                        const isCurrentMonth = date.getMonth() === currentDate.getMonth();
+                        const isToday = format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
                         const dateAppointments = getAppointmentsForDate(date);
-
+                        let pressTimer: NodeJS.Timeout | null = null;
+                        let pressed = false;
+                        // Handlers for long press
+                        const handlePointerDown = (e: React.PointerEvent) => {
+                          pressed = false;
+                          pressTimer = setTimeout(() => {
+                            pressed = true;
+                            handleDayClick(date);
+                          }, LONG_PRESS_DURATION);
+                        };
+                        const handlePointerUp = (e: React.PointerEvent) => {
+                          if (pressTimer) clearTimeout(pressTimer);
+                          if (!pressed) {
+                            goToDateView(date);
+                          }
+                        };
+                        const handlePointerLeave = (e: React.PointerEvent) => {
+                          if (pressTimer) clearTimeout(pressTimer);
+                        };
+                        const handleTouchStart = (e: React.TouchEvent) => {
+                          pressed = false;
+                          pressTimer = setTimeout(() => {
+                            pressed = true;
+                            handleDayClick(date);
+                          }, LONG_PRESS_DURATION);
+                        };
+                        const handleTouchEnd = (e: React.TouchEvent) => {
+                          if (pressTimer) clearTimeout(pressTimer);
+                          if (!pressed) {
+                            goToDateView(date);
+                          }
+                        };
+                        const handleTouchCancel = (e: React.TouchEvent) => {
+                          if (pressTimer) clearTimeout(pressTimer);
+                        };
                         return (
                           <div
                             key={i}
-                            className={`h-28 p-1 border-t border-l ${i % 7 === 6 ? "border-r" : ""} ${
-                              isToday ? "bg-gray-900" : "bg-black"
-                            } ${!isCurrentMonth ? "text-gray-600" : "text-gray-300"} border-gray-700`}
-                            onClick={() => handleDayClick(date)}
-                            onMouseMove={handleMonthDayMouseMove}
-                            onMouseUp={(e) => handleMonthDayMouseUp(date, e)}
+                            className={`h-28 p-1 border-t border-l ${i % 7 === 6 ? "border-r" : ""} ${isToday ? "bg-gray-900" : "bg-black"} ${!isCurrentMonth ? "text-gray-600" : "text-gray-300"} border-gray-700 min-w-[120px]`}
+                            onPointerDown={handlePointerDown}
+                            onPointerUp={handlePointerUp}
+                            onPointerLeave={handlePointerLeave}
+                            onTouchStart={handleTouchStart}
+                            onTouchEnd={handleTouchEnd}
+                            onTouchCancel={handleTouchCancel}
+                            style={{ touchAction: 'manipulation' }}
                           >
                             <div className="text-right mb-1">
                               <span className="text-xs font-medium">
@@ -980,32 +963,27 @@ const Scheduler: React.FC = () => {
                               </span>
                             </div>
                             <div className="space-y-1">
-                              {dateAppointments.slice(0, 2).map((app, idx) => (
-                                <div
-                                  key={idx}
-                                  className={`bg-white bg-opacity-10 rounded px-1 py-0.5 text-xs truncate cursor-move ${
-                                    draggingAppointment?.uuid === app.uuid
-                                      ? "opacity-50"
-                                      : ""
-                                  }`}
-                                  title={`${app.title} - ${app.name} ${app.lastname}`}
-                                  onMouseDown={(e) =>
-                                    handleMonthDayMouseDown(date, e, app)
-                                  }
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAppointmentClick(app, e);
-                                  }}
-                                >
-                                  <div className="flex items-center">
-                                    <Move className="h-3 w-3 mr-1" />
-                                    <span>
-                                      {format(new Date(app.time_from), "HH:mm")}{" "}
-                                      {app.title}
-                                    </span>
+                              {dateAppointments.slice(0, 2).map((app, idx) => {
+                                const priority = app.added_description?.priority || 'medium';
+                                const colorClass = getPriorityColor(priority);
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`${colorClass} rounded px-1 py-0.5 text-xs truncate cursor-pointer`}
+                                    title={`${app.title} - ${app.name} ${app.lastname}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAppointmentClick(app, e);
+                                    }}
+                                  >
+                                    <div className="flex items-center">
+                                      <span>
+                                        {format(new Date(app.time_from), "HH:mm")} {app.title}
+                                      </span>
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                               {dateAppointments.length > 2 && (
                                 <div className="text-xs text-gray-400">
                                   +{dateAppointments.length - 2} więcej
@@ -1021,10 +999,10 @@ const Scheduler: React.FC = () => {
                     <div className="relative">
                       <div className="flex">
                         {datesToShow.map((date, dateIndex) => (
-                          <div key={dateIndex} className="flex-1">
+                          <div key={dateIndex} className="flex-1 min-w-[120px]">
                             {hours.map((hour) => {
-                              const cellAppointments =
-                                getAppointmentsForDateAndHour(date, hour);
+                              const cellAppointments = getAppointmentsForDateAndHour(date, hour);
+                              const showMinuteLines = hasMinuteAppointments(date, hour);
                               return (
                                 <div
                                   key={`${dateIndex}-${hour}`}
@@ -1032,49 +1010,72 @@ const Scheduler: React.FC = () => {
                                     dragTarget &&
                                     dragTarget.hour === hour &&
                                     isSameDay(dragTarget.date, date)
-                                      ? "bg-gray-700 bg-opacity-30"
+                                      ? "bg-blue-900/20"
                                       : ""
                                   }`}
                                   onClick={() => handleCellClick(date, hour)}
-                                  onDragOver={(e) =>
-                                    handleDragOver(date, hour, e)
-                                  }
+                                  onDragOver={(e) => handleDragOver(date, hour, e)}
                                   onDrop={(e) => handleDrop(date, hour, e)}
                                 >
-                                  {cellAppointments.map((app, idx) => (
-                                    <div
-                                      key={idx}
-                                      className="bg-gray-400 bg-opacity-10 rounded m-1 p-1 text-xs h-[calc(100%-0.5rem)] overflow-hidden cursor-move"
-                                      title={`${app.title} - ${app.name} ${app.lastname}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleAppointmentClick(app, e);
-                                      }}
-                                      draggable
-                                      onDragStart={(e) =>
-                                        handleDragStart(app, e)
-                                      }
-                                      onDragEnd={handleDragEnd}
-                                    >
-                                      <div className="font-semibold truncate flex items-center">
-                                        <Move className="h-3 w-3 mr-1 inline-block" />
-                                        <span>{app.title}</span>
-                                      </div>
-                                      <div className="truncate">
-                                        {app.name} {app.lastname}
-                                      </div>
-                                      <div className="text-xs text-gray-300 mt-1">
-                                        {format(
-                                          new Date(app.time_from),
-                                          "HH:mm",
-                                        )}{" "}
-                                        -{" "}
-                                        {format(new Date(app.time_to), "HH:mm")}
-                                      </div>
+                                  {/* Minute lines only if needed */}
+                                  {showMinuteLines && (
+                                    <div className="absolute inset-0">
+                                      {[15, 30, 45].map((minute) => (
+                                        <div
+                                          key={minute}
+                                          className="absolute left-0 right-0 h-px bg-blue-400/60"
+                                          style={{ top: `${(minute / 60) * 80}px` }}
+                                        />
+                                      ))}
                                     </div>
-                                  ))}
+                                  )}
+                                  {cellAppointments.map((app, idx) => {
+                                    const startTime = new Date(app.time_from);
+                                    const endTime = new Date(app.time_to);
+                                    const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60); // duration in minutes
+                                    const height = Math.max((duration / 60) * 80, 36); // min height 36px
+                                    const top = (startTime.getMinutes() / 60) * 80; // position based on minutes
+                                    const needsExpansion = duration > 60 || startTime.getMinutes() > 0 || endTime.getMinutes() > 0;
+                                    const priority = app.added_description?.priority || 'medium';
+                                    const colorClass = getPriorityColor(priority);
+                                    return (
+                                      <div
+                                        key={idx}
+                                        className={`${colorClass} rounded-lg shadow-md p-2 text-white cursor-pointer hover:scale-102 transition-all absolute left-1 right-1 ${needsExpansion ? 'hover:z-10' : ''}`}
+                                        style={{ height: `${height}px`, top: `${top}px` }}
+                                        title={`${app.title} - ${app.name} ${app.lastname}\n${format(startTime, "HH:mm")} - ${format(endTime, "HH:mm")}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleAppointmentClick(app, e);
+                                        }}
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(app, e)}
+                                        onDragEnd={handleDragEnd}
+                                      >
+                                        <div className="font-semibold truncate">{app.title}</div>
+                                        <div className="truncate text-xs">{app.name} {app.lastname}</div>
+                                        <div className="text-xs mt-1 flex items-center gap-1">
+                                          <Clock className="w-3 h-3" />
+                                          {format(startTime, "HH:mm")} - {format(endTime, "HH:mm")}
+                                        </div>
+                                        {/* Show end minute below the hour if appointment is long or ends at a non-zero minute */}
+                                        {needsExpansion && (
+                                          <div className="absolute right-2 text-xs text-white/80 font-bold" style={{ bottom: '-18px' }}>
+                                            {endTime.getMinutes() !== 0 && (
+                                              <span>
+                                                {format(endTime, 'mm')}
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                   {cellAppointments.length === 0 && (
-                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div 
+                                      className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                      onClick={() => handleCellClick(date, hour)}
+                                    >
                                       <span className="w-5 h-5 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-white">
                                         +
                                       </span>
@@ -1590,5 +1591,3 @@ const Scheduler: React.FC = () => {
 };
 
 export default Scheduler;
-
-

@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "http://0.0.0.0:8080";
+const API_URL = "https://rustproject.onrender.com";
 
 // Helper function to format date
 const formatDate = (date: string | Date): string => {
@@ -218,5 +218,3 @@ export const user = {
 };
 
 export default api;
-
-
