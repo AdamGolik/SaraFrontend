@@ -779,7 +779,7 @@ const Scheduler: React.FC = () => {
     });
   };
 
-  const getPriorityColor = (priority) => {
+  const getPriorityColor = (priority: string | undefined) => {
     if (!priority) return 'bg-blue-500/80';
     if (priority === 'high') return 'bg-red-500/80';
     if (priority === 'low') return 'bg-green-500/80';
@@ -790,9 +790,9 @@ const Scheduler: React.FC = () => {
   const LONG_PRESS_DURATION = 500; // ms
 
   return (
-    <div className="container mx-auto px-2 md:px-4 py-4 md:py-6 bg-black text-white min-h-screen">
+    <div className="container mx-auto px-0 sm:px-2 md:px-4 py-2 md:py-6 bg-black text-white min-h-screen w-full overflow-x-hidden">
       {/* Booksy-style header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 py-4 mb-2">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 py-2 md:py-4 mb-2 px-2 sm:px-4">
         <div className="flex items-center gap-2 justify-center">
           <Button
             variant="ghost"
@@ -802,7 +802,7 @@ const Scheduler: React.FC = () => {
           >
             <ChevronLeft className="h-6 w-6" />
           </Button>
-          <span className="text-xl md:text-2xl font-bold text-center min-w-[120px]">
+          <span className="text-lg sm:text-xl md:text-2xl font-bold text-center min-w-[90px] sm:min-w-[120px]">
             {format(currentDate, 'LLLL yyyy', { locale: pl })}
           </span>
           <Button
@@ -814,7 +814,7 @@ const Scheduler: React.FC = () => {
             <ChevronRight className="h-6 w-6" />
           </Button>
         </div>
-        <div className="flex gap-2 mt-2 md:mt-0 justify-center">
+        <div className="flex gap-1 sm:gap-2 mt-2 md:mt-0 justify-center">
           <Button
             variant={view === 'day' ? 'default' : 'outline'}
             onClick={() => setView('day')}
@@ -838,22 +838,22 @@ const Scheduler: React.FC = () => {
           </Button>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-6">
+      <div className="grid grid-cols-1 gap-4 md:gap-6 w-full">
         {/* Main Calendar */}
-        <div className="col-span-1">
-          <Card className="border-none shadow-none bg-black text-white">
-            <CardContent className="px-0 pb-0">
-              <div className="flex overflow-x-auto border border-white rounded-lg bg-black">
+        <div className="col-span-1 w-full">
+          <Card className="border-none shadow-none bg-black text-white w-full">
+            <CardContent className="px-0 pb-0 w-full">
+              <div className="flex overflow-x-auto border border-white rounded-lg bg-black w-full">
                 {/* Time column - only shown for week and day views */}
                 {(view === "week" || view === "day") && (
-                  <div className="w-20 flex-shrink-0 border-r border-gray-700 bg-black">
-                    <div className="h-12"></div> {/* Empty cell for header alignment */}
+                  <div className="w-16 sm:w-16 md:w-20 flex-shrink-0 border-r border-gray-700 bg-black">
+                    <div className="h-10 sm:h-12"></div> {/* Empty cell for header alignment */}
                     {hours.map((hour) => (
                       <div
                         key={hour}
-                        className="h-20 flex flex-col items-center justify-center border-t border-gray-700 relative"
+                        className="h-28 sm:h-20 flex flex-col items-center justify-center border-t border-gray-700 relative"
                       >
-                        <span className="text-sm font-medium text-gray-300">{`${hour}:00`}</span>
+                        <span className="text-xs sm:text-sm font-medium text-gray-300">{`${hour}:00`}</span>
                         {/* Minute lines only if needed */}
                         {datesToShow.some(date => hasMinuteAppointments(date, hour)) && (
                           <div className="absolute left-0 right-0 h-full">
@@ -861,7 +861,7 @@ const Scheduler: React.FC = () => {
                               <div
                                 key={minute}
                                 className="absolute left-0 right-0 h-px bg-blue-400/60"
-                                style={{ top: `${(minute / 60) * 80}px` }}
+                                style={{ top: `calc(${(minute / 60) * 112}px)` }} // 112px for h-28
                               />
                             ))}
                           </div>
@@ -870,16 +870,16 @@ const Scheduler: React.FC = () => {
                     ))}
                   </div>
                 )}
-                <div className="flex-grow overflow-auto">
+                <div className="flex-grow overflow-x-auto w-full">
                   {/* Grid Header */}
-                  <div className="flex">
+                  <div className="flex min-w-[600px] sm:min-w-full">
                     {view === "month"
                       ? ["Pon", "Wt", "Śr", "Czw", "Pt", "Sb", "Nd"].map((day, i) => (
                           <div
                             key={i}
-                            className="flex-1 h-12 flex items-center justify-center border-b border-gray-700 bg-black"
+                            className="flex-1 h-10 sm:h-12 flex items-center justify-center border-b border-gray-700 bg-black min-w-[60px] sm:min-w-[90px] md:min-w-[120px]"
                           >
-                            <span className="text-sm font-medium text-gray-300">
+                            <span className="text-xs sm:text-sm font-medium text-gray-300">
                               {day}
                             </span>
                           </div>
@@ -887,16 +887,16 @@ const Scheduler: React.FC = () => {
                       : datesToShow.map((date, i) => (
                           <div
                             key={i}
-                            className={`flex-1 h-12 flex flex-col items-center justify-center border-b ${
+                            className={`flex-1 h-10 sm:h-12 flex flex-col items-center justify-center border-b ${
                               format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
                                 ? "bg-blue-900/30"
                                 : "bg-black"
-                            } border-gray-700`}
+                            } border-gray-700 min-w-[60px] sm:min-w-[90px] md:min-w-[120px]`}
                           >
-                            <span className="text-xs text-gray-400">
+                            <span className="text-[10px] sm:text-xs text-gray-400">
                               {format(date, "EEE", { locale: pl })}
                             </span>
-                            <span className="text-sm font-medium">
+                            <span className="text-xs sm:text-sm font-medium">
                               {format(date, "d")}
                             </span>
                           </div>
@@ -905,7 +905,7 @@ const Scheduler: React.FC = () => {
                   {/* Grid Content */}
                   {view === "month" ? (
                     // Month view grid
-                    <div className="grid grid-cols-7 auto-rows-fr min-w-[700px] md:min-w-0">
+                    <div className="grid grid-cols-7 auto-rows-fr min-w-[600px] sm:min-w-full">
                       {datesToShow.map((date, i) => {
                         const isCurrentMonth = date.getMonth() === currentDate.getMonth();
                         const isToday = format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
@@ -948,7 +948,7 @@ const Scheduler: React.FC = () => {
                         return (
                           <div
                             key={i}
-                            className={`h-28 p-1 border-t border-l ${i % 7 === 6 ? "border-r" : ""} ${isToday ? "bg-gray-900" : "bg-black"} ${!isCurrentMonth ? "text-gray-600" : "text-gray-300"} border-gray-700 min-w-[120px]`}
+                            className={`h-32 sm:h-28 p-2 sm:p-1 border-t border-l ${i % 7 === 6 ? "border-r" : ""} ${isToday ? "bg-gray-900" : "bg-black"} ${!isCurrentMonth ? "text-gray-600" : "text-gray-300"} border-gray-700 min-w-[120px]`}
                             onPointerDown={handlePointerDown}
                             onPointerUp={handlePointerUp}
                             onPointerLeave={handlePointerLeave}
@@ -969,7 +969,7 @@ const Scheduler: React.FC = () => {
                                 return (
                                   <div
                                     key={idx}
-                                    className={`${colorClass} rounded px-1 py-0.5 text-xs truncate cursor-pointer`}
+                                    className={`${colorClass} rounded px-2 py-1 text-sm truncate cursor-pointer`}
                                     title={`${app.title} - ${app.name} ${app.lastname}`}
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -996,23 +996,17 @@ const Scheduler: React.FC = () => {
                     </div>
                   ) : (
                     // Week and day view grid
-                    <div className="relative">
+                    <div className="relative min-w-[600px] sm:min-w-full">
                       <div className="flex">
                         {datesToShow.map((date, dateIndex) => (
-                          <div key={dateIndex} className="flex-1 min-w-[120px]">
+                          <div key={dateIndex} className="flex-1 min-w-[60px] sm:min-w-[90px] md:min-w-[120px]">
                             {hours.map((hour) => {
                               const cellAppointments = getAppointmentsForDateAndHour(date, hour);
                               const showMinuteLines = hasMinuteAppointments(date, hour);
                               return (
                                 <div
                                   key={`${dateIndex}-${hour}`}
-                                  className={`h-20 border-t border-l border-gray-700 relative group bg-black hover:bg-gray-900 ${
-                                    dragTarget &&
-                                    dragTarget.hour === hour &&
-                                    isSameDay(dragTarget.date, date)
-                                      ? "bg-blue-900/20"
-                                      : ""
-                                  }`}
+                                  className={`h-28 sm:h-20 border-t border-l border-gray-700 relative group bg-black hover:bg-gray-900 ${dragTarget && dragTarget.hour === hour && isSameDay(dragTarget.date, date) ? "bg-blue-900/20" : ""} px-2 sm:px-0`}
                                   onClick={() => handleCellClick(date, hour)}
                                   onDragOver={(e) => handleDragOver(date, hour, e)}
                                   onDrop={(e) => handleDrop(date, hour, e)}
@@ -1024,7 +1018,7 @@ const Scheduler: React.FC = () => {
                                         <div
                                           key={minute}
                                           className="absolute left-0 right-0 h-px bg-blue-400/60"
-                                          style={{ top: `${(minute / 60) * 80}px` }}
+                                          style={{ top: `calc(${(minute / 60) * 112}px)` }} // 112px for h-28
                                         />
                                       ))}
                                     </div>
@@ -1041,7 +1035,7 @@ const Scheduler: React.FC = () => {
                                     return (
                                       <div
                                         key={idx}
-                                        className={`${colorClass} rounded-lg shadow-md p-2 text-white cursor-pointer hover:scale-102 transition-all absolute left-1 right-1 ${needsExpansion ? 'hover:z-10' : ''}`}
+                                        className={`${colorClass} rounded-lg shadow-md p-3 sm:p-2 text-white cursor-pointer absolute left-1 right-1 group text-base sm:text-sm ${view === 'day' ? 'hover:scale-101 transition-transform duration-200 ease-in-out hover:z-20' : view === 'week' ? 'hover:scale-105 transition-transform duration-200 ease-in-out hover:z-20' : ''}`}
                                         style={{ height: `${height}px`, top: `${top}px` }}
                                         title={`${app.title} - ${app.name} ${app.lastname}\n${format(startTime, "HH:mm")} - ${format(endTime, "HH:mm")}`}
                                         onClick={(e) => {
@@ -1060,7 +1054,7 @@ const Scheduler: React.FC = () => {
                                         </div>
                                         {/* Show end minute below the hour if appointment is long or ends at a non-zero minute */}
                                         {needsExpansion && (
-                                          <div className="absolute right-2 text-xs text-white/80 font-bold" style={{ bottom: '-18px' }}>
+                                          <div className="absolute right-2 bottom-2 text-xs text-white/80 font-bold">
                                             {endTime.getMinutes() !== 0 && (
                                               <span>
                                                 {format(endTime, 'mm')}
