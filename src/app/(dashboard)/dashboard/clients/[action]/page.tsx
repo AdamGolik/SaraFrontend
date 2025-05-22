@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -38,10 +38,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { format, setHours, setMinutes } from "date-fns";
+import { format, setHours, setMinutes, parse } from "date-fns";
 import { pl } from "date-fns/locale";
 import { CalendarIcon, Clock } from "lucide-react";
-import { use } from "react";
 
 const formSchema = z.object({
   name: z.string().min(2, "Imię musi mieć minimum 2 znaki"),
@@ -131,11 +130,13 @@ export default function ClientFormPage({
   params: { action: string };
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [customFieldsPage, setCustomFieldsPage] = useState(1);
   const ITEMS_PER_PAGE = 5;
+
   const isEdit = params.action !== "new";
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -166,11 +167,62 @@ export default function ClientFormPage({
     if (isEdit) {
       fetchClient();
     } else {
-      // Set current time for new clients
-      const now = new Date();
-      form.setValue("datetime", now);
+      // Process URL parameters for new clients
+      const urlDate = searchParams.get("date");
+      const urlHour = searchParams.get("hour");
+      const urlMinute = searchParams.get("minute");
+
+      // Set defaults
+      let selectedDate = new Date();
+      let startHour = "09";
+      let startMinute = "00";
+
+      // Parse date from URL if provided
+      if (urlDate) {
+        try {
+          // Try to parse the date in YYYY-MM-DD format
+          const parsedDate = parse(urlDate, "yyyy-MM-dd", new Date());
+          if (!isNaN(parsedDate.getTime())) {
+            selectedDate = parsedDate;
+          }
+        } catch (error) {
+          console.error("Error parsing date:", error);
+        }
+      }
+
+      // Parse hour from URL if provided
+      if (urlHour) {
+        const hourNum = parseInt(urlHour);
+        if (!isNaN(hourNum) && hourNum >= 0 && hourNum < 24) {
+          startHour = hourNum.toString().padStart(2, "0");
+        }
+      }
+
+      // Parse minute from URL if provided
+      if (urlMinute) {
+        const minuteNum = parseInt(urlMinute);
+        if (!isNaN(minuteNum) && minuteNum >= 0 && minuteNum < 60) {
+          // Round to nearest 5 minutes for compatibility with the form
+          const roundedMinute = Math.round(minuteNum / 5) * 5;
+          startMinute = roundedMinute.toString().padStart(2, "0");
+        }
+      }
+
+      // Set form values
+      form.setValue("date", selectedDate);
+      form.setValue("startHour", startHour);
+      form.setValue("startMinute", startMinute);
+      form.setValue("datetime", new Date());
+
+      // Calculate end time (default 1 hour after start time)
+      let endHour = parseInt(startHour);
+      let endMinute = parseInt(startMinute);
+
+      endHour = (endHour + 1) % 24;
+      form.setValue("endHour", endHour.toString().padStart(2, "0"));
+      form.setValue("endMinute", endMinute.toString().padStart(2, "0"));
     }
-  }, [isEdit]);
+  }, [isEdit, searchParams]);
 
   const detectFieldType = (value: any): "string" | "array" | "number" => {
     if (Array.isArray(value)) return "array";
@@ -182,7 +234,6 @@ export default function ClientFormPage({
     try {
       setIsLoading(true);
       const response = await clients.getById(params.action);
-
       // Convert all added_description fields to custom fields
       const customFieldsArray = Object.entries(response.added_description || {})
         .map(([key, value]) => {
@@ -192,7 +243,6 @@ export default function ClientFormPage({
           ) {
             return null;
           }
-
           return {
             key,
             value: Array.isArray(value) ? value : String(value),
@@ -249,16 +299,28 @@ export default function ClientFormPage({
   const handleCustomFieldValueChange = (index: number, value: string) => {
     const field = customFields[index];
     let newValue: string | string[] = value;
-
-    if (field.type === "array") {
-      newValue = value
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
-    } else if (field.type === "number") {
-      newValue = value.replace(/[^0-9.-]/g, "");
+    if (type === "array") {
+      if (typeof field.value === "string") {
+        newValue = field.value
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+      } else if (!Array.isArray(field.value)) {
+        newValue = [];
+      }
+    } else if (type === "string") {
+      if (Array.isArray(field.value)) {
+        newValue = field.value.join(", ");
+      } else if (typeof field.value !== "string") {
+        newValue = "";
+      }
+    } else if (type === "number") {
+      if (typeof field.value === "string") {
+        newValue = field.value.replace(/[^0-9.-]/g, "");
+      } else if (Array.isArray(field.value)) {
+        newValue = "";
+      }
     }
-
     updateCustomField(index, { ...field, value: newValue });
   };
 
@@ -268,7 +330,6 @@ export default function ClientFormPage({
   ) => {
     const field = customFields[index];
     let newValue: string | string[] = field.value;
-
     if (type === "array" && typeof newValue === "string") {
       newValue = newValue
         .split(",")
@@ -277,7 +338,6 @@ export default function ClientFormPage({
     } else if (type === "string" && Array.isArray(newValue)) {
       newValue = newValue.join(", ");
     }
-
     updateCustomField(index, { ...field, type, value: newValue });
   };
 
@@ -300,7 +360,6 @@ export default function ClientFormPage({
         parseInt(values.startHour),
         parseInt(values.startMinute),
       );
-
       const timeTo = new Date(values.date);
       timeTo.setHours(parseInt(values.endHour), parseInt(values.endMinute));
 
@@ -354,7 +413,6 @@ export default function ClientFormPage({
       setIsLoading(false);
     }
   }
-
   return (
     <div className="space-y-4 p-4 md:p-6">
       <div>
@@ -895,3 +953,5 @@ export default function ClientFormPage({
     </div>
   );
 }
+
+

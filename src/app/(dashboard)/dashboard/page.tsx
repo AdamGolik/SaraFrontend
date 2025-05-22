@@ -60,8 +60,15 @@ export default function DashboardPage() {
       const response = await clients.getAll(currentPage, 10, searchQuery);
       // Sort clients by priority
       const sortedClients = response.clients.sort((a: Client, b: Client) => {
-        const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
-        return priorityOrder[a.added_description.priority] - priorityOrder[b.added_description.priority];
+        const priorityOrder: Record<string, number> = {
+          high: 0,
+          medium: 1,
+          low: 2,
+        };
+        return (
+          priorityOrder[a.added_description.priority] -
+          priorityOrder[b.added_description.priority]
+        );
       });
       setClientsList(sortedClients);
       setTotalPages(response.pagination.total_pages);
@@ -171,15 +178,15 @@ export default function DashboardPage() {
                             client.added_description.priority === "high"
                               ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
                               : client.added_description.priority === "medium"
-                              ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
-                              : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
+                                : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
                           }`}
                         >
                           {client.added_description.priority === "high"
                             ? "Wysoki"
                             : client.added_description.priority === "medium"
-                            ? "Średni"
-                            : "Niski"}
+                              ? "Średni"
+                              : "Niski"}
                         </span>
                       </TableCell>
                     </TableRow>
@@ -213,4 +220,7 @@ export default function DashboardPage() {
       </Card>
     </div>
   );
-} 
+}
+
+
+

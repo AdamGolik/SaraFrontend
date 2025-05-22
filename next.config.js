@@ -12,9 +12,6 @@ const config = {
   reactStrictMode: true,
   swcMinify: true,
   output: "standalone",
-  experimental: {
-    serverActions: true,
-  },
 };
 
 module.exports = config;

@@ -22,12 +22,15 @@ import {
   X,
   Sun,
   Moon,
+  GrapeIcon,
+  Grape,
 } from "lucide-react";
 
 const navigation = [
   { name: "Klienci", href: "/dashboard", icon: Users },
   { name: "Kalendarz", href: "/dashboard/calendar", icon: Calendar },
   { name: "Ustawienia", href: "/dashboard/settings", icon: Settings },
+  { name: "Wykres", href: "/dashboard/grap", icon: Grape },
 ];
 
 export default function DashboardLayout({
@@ -68,7 +71,7 @@ export default function DashboardLayout({
                       "flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium",
                       pathname === item.href
                         ? "bg-primary text-primary-foreground"
-                        : "hover:bg-accent"
+                        : "hover:bg-accent",
                     )}
                   >
                     <item.icon className="h-5 w-5" />
@@ -102,7 +105,7 @@ export default function DashboardLayout({
                     "flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium",
                     pathname === item.href
                       ? "bg-primary text-primary-foreground"
-                      : "hover:bg-accent"
+                      : "hover:bg-accent",
                   )}
                 >
                   <item.icon className="h-5 w-5" />
@@ -142,4 +145,6 @@ export default function DashboardLayout({
       </div>
     </div>
   );
-} 
+}
+
+
