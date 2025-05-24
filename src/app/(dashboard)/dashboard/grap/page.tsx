@@ -79,6 +79,11 @@ import { toast } from "@/components/ui/use-toast";
 import { clients } from "@/lib/api";
 import * as z from "zod";
 import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 // View types
 type ViewType = "month" | "week" | "day";
@@ -90,10 +95,12 @@ const appointmentSchema = z.object({
   telephone: z.string().min(9, "Nieprawidłowy numer telefonu"),
   title: z.string(),
   description: z.string().optional(),
+  date: z.date(),
   startHour: z.string(),
   startMinute: z.string(),
   endHour: z.string(),
   endMinute: z.string(),
+  datetime: z.date(),
   added_description: z
     .object({
       contact_preference: z.string().optional(),
@@ -113,6 +120,7 @@ interface Appointment {
   telephone: string;
   time_from: string;
   time_to: string;
+  datetime: string;
   added_description?: {
     contact_preference?: string;
     priority?: string;
@@ -168,10 +176,12 @@ const Scheduler: React.FC = () => {
       telephone: "",
       title: "",
       description: "",
+      date: new Date(),
       startHour: "08",
       startMinute: "00",
       endHour: "09",
       endMinute: "00",
+      datetime: new Date(),
       added_description: {
         contact_preference: "telephone",
         priority: "medium",
@@ -180,28 +190,6 @@ const Scheduler: React.FC = () => {
       },
     },
   });
-
-  // Calculate the dates to show based on the selected view
-  const getDatesToShow = () => {
-    if (view === "month") {
-      const firstDay = startOfMonth(currentDate);
-      const lastDay = endOfMonth(currentDate);
-
-      // Get the first day of the week the month starts on
-      const start = startOfWeek(firstDay, { weekStartsOn: 1 });
-
-      // Generate 42 days (6 weeks) to ensure we cover the entire month view
-      return Array.from({ length: 42 }, (_, i) => addDays(start, i));
-    } else if (view === "week") {
-      const start = startOfWeek(currentDate, { weekStartsOn: 1 });
-      return Array.from({ length: 7 }, (_, i) => addDays(start, i));
-    } else {
-      // For day view, return just the current date
-      return [currentDate];
-    }
-  };
-
-  const datesToShow = getDatesToShow();
 
   // Get appointments for the current view - with error handling
   const fetchAppointments = async (forceRefresh = false) => {
@@ -219,19 +207,40 @@ const Scheduler: React.FC = () => {
         from = startOfWeek(currentDate, { weekStartsOn: 1 });
         to = addDays(from, 6);
       } else {
+        // For day view, adjust the time range to account for timezone
         from = startOfDay(currentDate);
+        from.setHours(from.getHours() - 2); // Subtract 2 hours to get the correct range
         to = endOfDay(currentDate);
+        to.setHours(to.getHours() - 2); // Subtract 2 hours to get the correct range
       }
+
+      console.log('Fetching appointments for range:', {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        view,
+        currentDate: currentDate.toISOString(),
+        fromDate: from.toDateString(),
+        toDate: to.toDateString()
+      });
 
       // Fetch appointments from API
       const response = await clients.getByDateRange(
         from.toISOString(),
         to.toISOString(),
         1,
-        100, // Get more appointments to ensure we show them all
+        100,
       );
 
-      setAppointments(response.clients || []);
+      if (response && response.clients) {
+        console.log('Received appointments:', {
+          count: response.clients.length,
+          dates: response.clients.map(client => new Date(client.time_from).toDateString())
+        });
+        setAppointments(response.clients);
+      } else {
+        console.log('No appointments received');
+        setAppointments([]);
+      }
 
       // Update sidebar appointments if a date is selected
       if (selectedDateForSidebar) {
@@ -244,14 +253,42 @@ const Scheduler: React.FC = () => {
         description: "Nie udało się pobrać harmonogramu",
         variant: "destructive",
       });
+      setAppointments([]);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Check if time slot is available
+  const isTimeSlotAvailable = (date: Date, startHour: number, startMinute: number, endHour: number, endMinute: number) => {
+    const startTime = new Date(date);
+    startTime.setHours(startHour, startMinute, 0, 0);
+    
+    const endTime = new Date(date);
+    endTime.setHours(endHour, endMinute, 0, 0);
+
+    // Don't check against the current appointment when editing
+    const appointmentsToCheck = editingAppointment 
+      ? appointments.filter(app => app.uuid !== editingAppointment.uuid)
+      : appointments;
+
+    return !appointmentsToCheck.some(app => {
+      const appStart = new Date(app.time_from);
+      const appEnd = new Date(app.time_to);
+      
+      // Check if the new appointment overlaps with any existing one
+      return (
+        (startTime >= appStart && startTime < appEnd) || // New start time falls within existing appointment
+        (endTime > appStart && endTime <= appEnd) || // New end time falls within existing appointment
+        (startTime <= appStart && endTime >= appEnd) // New appointment completely encompasses existing one
+      );
+    });
+  };
+
   // Call fetchAppointments when view or date changes
   useEffect(() => {
-    fetchAppointments();
+    console.log('View or date changed:', { view, currentDate: currentDate.toISOString() });
+    fetchAppointments(true);
   }, [currentDate, view]);
 
   // Navigation functions
@@ -278,6 +315,26 @@ const Scheduler: React.FC = () => {
   const navigateToday = () => {
     setCurrentDate(new Date());
   };
+
+  // Calculate the dates to show based on the selected view
+  const getDatesToShow = () => {
+    if (view === "month") {
+      const firstDay = startOfMonth(currentDate);
+      const start = startOfWeek(firstDay, { weekStartsOn: 1 });
+      return Array.from({ length: 42 }, (_, i) => addDays(start, i));
+    } else if (view === "week") {
+      const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+      return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+    } else {
+      // For day view, ensure we're using the correct date
+      const day = new Date(currentDate);
+      day.setHours(0, 0, 0, 0); // Reset time to start of day
+      console.log('Day view date:', day.toISOString());
+      return [day];
+    }
+  };
+
+  const datesToShow = getDatesToShow();
 
   // Find appointments for a specific date and hour
   const getAppointmentsForDateAndHour = (date: Date, hour: number) => {
@@ -330,17 +387,19 @@ const Scheduler: React.FC = () => {
     const hourStr = hour.toString().padStart(2, "0");
     setSelectedTime(`${hourStr}:00`);
 
-    // Reset form with correct time values (preserve the exact hour that was clicked)
+    // Reset form with correct time values and the selected date
     form.reset({
       name: "",
       lastname: "",
       telephone: "",
       title: "",
       description: "",
+      date: date, // Use the selected date instead of new Date()
       startHour: hourStr,
       startMinute: "00",
-      endHour: (hour + 1).toString().padStart(2, "0"), // Default end time is 1 hour later
+      endHour: (hour + 1).toString().padStart(2, "0"),
       endMinute: "00",
+      datetime: date, // Use the selected date here too
       added_description: {
         contact_preference: "telephone",
         priority: "medium",
@@ -370,26 +429,29 @@ const Scheduler: React.FC = () => {
       event.stopPropagation();
     }
 
-    // Get exact times from the appointment
-    const timeFrom = new Date(appointment.time_from);
-    const timeTo = new Date(appointment.time_to);
+    // Get exact times and date from the appointment strings
+    const timeFromDate = new Date(appointment.time_from);
+    const timeToDate = new Date(appointment.time_to);
 
-    setSelectedDate(timeFrom);
+    // Set selectedDate for context (optional, form state is primary)
+    setSelectedDate(timeFromDate);
     setSelectedTime(
-      `${timeFrom.getHours().toString().padStart(2, "0")}:${timeFrom.getMinutes().toString().padStart(2, "0")}`,
+      `${timeFromDate.getHours().toString().padStart(2, "0")}:${timeFromDate.getMinutes().toString().padStart(2, "0")}`,
     );
 
-    // Preserve the exact times when editing
+    // Reset form with appointment data, using the new schema structure
     form.reset({
       name: appointment.name,
       lastname: appointment.lastname,
       telephone: appointment.telephone,
       title: appointment.title,
       description: appointment.description || "",
-      startHour: timeFrom.getHours().toString().padStart(2, "0"),
-      startMinute: timeFrom.getMinutes().toString().padStart(2, "0"),
-      endHour: timeTo.getHours().toString().padStart(2, "0"),
-      endMinute: timeTo.getMinutes().toString().padStart(2, "0"),
+      date: timeFromDate,
+      startHour: timeFromDate.getHours().toString().padStart(2, "0"),
+      startMinute: timeFromDate.getMinutes().toString().padStart(2, "0"),
+      endHour: timeToDate.getHours().toString().padStart(2, "0"),
+      endMinute: timeToDate.getMinutes().toString().padStart(2, "0"),
+      datetime: new Date(appointment.datetime),
       added_description: appointment.added_description || {
         contact_preference: "telephone",
         priority: "medium",
@@ -578,34 +640,50 @@ const Scheduler: React.FC = () => {
     try {
       setIsLoading(true);
 
-      // Create a new date object for the appointment
-      const appointmentDate = new Date(selectedDate);
-      appointmentDate.setHours(
-        parseInt(data.startHour) + 2, // Dodaj +2 godziny
+      // Create time_from and time_to Date objects from form values
+      const timeFrom = new Date(data.date);
+      timeFrom.setHours(
+        parseInt(data.startHour) + 2, // Add 2 hours
         parseInt(data.startMinute),
         0,
         0,
       );
 
-      // Create end time using the selected end time
-      const endTime = new Date(selectedDate);
-      endTime.setHours(
-        parseInt(data.endHour) + 2, // Dodaj +2 godziny
+      const timeTo = new Date(data.date);
+      timeTo.setHours(
+        parseInt(data.endHour) + 2, // Add 2 hours
         parseInt(data.endMinute),
         0,
         0,
       );
 
-      // Prepare appointment data
+      // Check if the time slot is available
+      if (!isTimeSlotAvailable(
+        data.date,
+        parseInt(data.startHour) + 2, // Add 2 hours for checking
+        parseInt(data.startMinute),
+        parseInt(data.endHour) + 2, // Add 2 hours for checking
+        parseInt(data.endMinute)
+      )) {
+        toast({
+          title: "Błąd",
+          description: "Wybrany termin koliduje z istniejącym spotkaniem",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Prepare appointment data for API
       const appointmentData = {
         name: data.name,
         lastname: data.lastname,
         telephone: data.telephone,
         title: data.title,
         description: data.description || "",
-        time_from: appointmentDate.toISOString().split(".")[0],
-        time_to: endTime.toISOString().split(".")[0],
-        datetime: new Date().toISOString().split(".")[0],
+        time_from: timeFrom.toISOString().split(".")[0],
+        time_to: timeTo.toISOString().split(".")[0],
+        datetime: data.datetime.toISOString().split(".")[0],
         added_description: {
           contact_preference:
             data.added_description?.contact_preference || "telephone",
@@ -616,14 +694,12 @@ const Scheduler: React.FC = () => {
       };
 
       if (editingAppointment) {
-        // Update existing appointment
         await clients.update(editingAppointment.uuid, appointmentData);
         toast({
           title: "Sukces",
           description: "Termin został zaktualizowany",
         });
       } else {
-        // Submit new appointment
         await clients.create(appointmentData);
         toast({
           title: "Sukces",
@@ -631,14 +707,10 @@ const Scheduler: React.FC = () => {
         });
       }
 
-      // Close modal and reset form
       setIsModalOpen(false);
       form.reset();
-
-      // Refresh appointments
       fetchAppointments(true);
 
-      // Update sidebar if needed
       if (selectedDateForSidebar) {
         updateSidebarAppointments(selectedDateForSidebar);
       }
@@ -734,10 +806,12 @@ const Scheduler: React.FC = () => {
       telephone: "",
       title: "",
       description: "",
+      date: new Date(),
       startHour: defaultHourStr,
       startMinute: "00",
       endHour: (parseInt(defaultHourStr) + 1).toString().padStart(2, "0"), // Default end time is 1 hour later
       endMinute: "00",
+      datetime: new Date(),
       added_description: {
         contact_preference: "telephone",
         priority: "medium",
@@ -1069,7 +1143,7 @@ const Scheduler: React.FC = () => {
                                 );
                               })}
                               {dateAppointments.length > 2 && (
-                                <div className="text-xs text-gray-400">
+                                <div className="text-xs text-gray-400 group-hover:opacity-100 opacity-0 transition-opacity">
                                   +{dateAppointments.length - 2} więcej
                                 </div>
                               )}
@@ -1293,13 +1367,50 @@ const Scheduler: React.FC = () => {
                 )}
               />
 
-              <div>
-                <FormLabel>Data</FormLabel>
-                <div className="border border-gray-700 rounded-md p-2 text-sm bg-gray-900">
-                  {selectedDate &&
-                    format(selectedDate, "EEEE, d MMMM yyyy", { locale: pl })}
-                </div>
-              </div>
+              {/* Date Field with Calendar Picker */}
+              <FormField
+                control={form.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Data</FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            className="w-full pl-3 text-left font-normal bg-gray-900 border-gray-700 text-white hover:bg-gray-800"
+                          >
+                            {field.value ? (
+                              format(field.value, "PPP", { locale: pl })
+                            ) : (
+                              <span>Wybierz datę</span>
+                            )}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={(date) => {
+                            if (date) {
+                              field.onChange(date);
+                              // Update datetime field as well
+                              form.setValue('datetime', date);
+                            }
+                          }}
+                          disabled={(date) => date < new Date("1900-01-01")}
+                          initialFocus
+                          className="rounded-md border"
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

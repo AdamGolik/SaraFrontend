@@ -228,12 +228,14 @@ export default function ClientFormPage({
     if (Array.isArray(value)) return "array";
     if (typeof value === "number") return "number";
     return "string";
-  };
+  };  
 
   const fetchClient = async () => {
     try {
       setIsLoading(true);
       const response = await clients.getById(params.action);
+      console.log("Client fetch response:", response);
+
       // Convert all added_description fields to custom fields
       const customFieldsArray = Object.entries(response.added_description || {})
         .map(([key, value]) => {
@@ -243,9 +245,11 @@ export default function ClientFormPage({
           ) {
             return null;
           }
+          // Ensure custom field value is treated as string for editing in Input fields, except for arrays
+          const processedValue = Array.isArray(value) ? value : String(value);
           return {
             key,
-            value: Array.isArray(value) ? value : String(value),
+            value: processedValue,
             type: Array.isArray(value)
               ? "array"
               : typeof value === "number"
@@ -257,26 +261,57 @@ export default function ClientFormPage({
 
       setCustomFields(customFieldsArray);
 
-      // Convert time_from and time_to to separate date and time fields
-      const timeFrom = new Date(response.time_from);
-      const timeTo = new Date(response.time_to);
+      // Parse time strings from API to Date objects
+      const timeFromDate = new Date(response.time_from);
+      const timeToDate = new Date(response.time_to);
+      const datetimeDate = new Date(response.datetime);
 
-      form.reset({
-        ...response,
-        date: timeFrom,
-        startHour: timeFrom.getHours().toString().padStart(2, "0"),
-        startMinute: timeFrom.getMinutes().toString().padStart(2, "0"),
-        endHour: timeTo.getHours().toString().padStart(2, "0"),
-        endMinute: timeTo.getMinutes().toString().padStart(2, "0"),
-        datetime: new Date(response.datetime),
+      console.log("Parsed dates:", {
+        timeFrom: timeFromDate,
+        timeTo: timeToDate,
+        datetime: datetimeDate
       });
+
+      // Set form values with proper data types
+      form.setValue("name", response.name || "");
+      form.setValue("lastname", response.lastname || "");
+      form.setValue("telephone", response.telephone || "");
+      form.setValue("title", response.title || "");
+      form.setValue("description", response.description || "");
+      form.setValue("date", timeFromDate);
+      form.setValue("datetime", datetimeDate);
+      
+      // Set time fields from parsed dates
+      form.setValue("startHour", timeFromDate.getHours().toString().padStart(2, "0"));
+      form.setValue("startMinute", timeFromDate.getMinutes().toString().padStart(2, "0"));
+      form.setValue("endHour", timeToDate.getHours().toString().padStart(2, "0"));
+      form.setValue("endMinute", timeToDate.getMinutes().toString().padStart(2, "0"));
+
+      // Set added_description fields
+      const addedDesc = response.added_description || {};
+      form.setValue("added_description", {
+        contact_preference: addedDesc.contact_preference || "telephone",
+        priority: addedDesc.priority || "medium",
+        notes: addedDesc.notes || "",
+        tags: Array.isArray(addedDesc.tags) ? addedDesc.tags : [],
+        custom_fields: {},
+      });
+
+      console.log("Form values set:", {
+        startHour: form.getValues("startHour"),
+        startMinute: form.getValues("startMinute"),
+        endHour: form.getValues("endHour"),
+        endMinute: form.getValues("endMinute"),
+      });
+
     } catch (error) {
+      console.error("Failed to fetch client:", error);
       toast({
         variant: "destructive",
         title: "Błąd",
         description: "Nie udało się pobrać danych klienta",
       });
-      router.push("/dashboard");
+      router.push("/dashboard"); // Redirect on error
     } finally {
       setIsLoading(false);
     }
@@ -325,6 +360,8 @@ export default function ClientFormPage({
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       setIsLoading(true);
+      console.log("Form values on submit:", values);
+      
       const customFieldsObject = customFields.reduce(
         (acc, { key, value, type }) => {
           if (key && value) {
@@ -344,11 +381,39 @@ export default function ClientFormPage({
       // Create time_from and time_to dates from the selected date and times
       const timeFrom = new Date(values.date);
       timeFrom.setHours(
-        parseInt(values.startHour),
+        parseInt(values.startHour) + 2,
         parseInt(values.startMinute),
+        0,
+        0
       );
+      
       const timeTo = new Date(values.date);
-      timeTo.setHours(parseInt(values.endHour), parseInt(values.endMinute));
+      timeTo.setHours(
+        parseInt(values.endHour) + 2,
+        parseInt(values.endMinute),
+        0,
+        0
+      );
+
+      // Validate that end time is after start time
+      if (timeTo <= timeFrom) {
+        toast({
+          variant: "destructive",
+          title: "Błąd",
+          description: "Godzina zakończenia musi być późniejsza niż godzina rozpoczęcia",
+        });
+        return;
+      }
+
+      console.log("Time calculation:", {
+        date: values.date,
+        startHour: values.startHour,
+        startMinute: values.startMinute,
+        endHour: values.endHour,
+        endMinute: values.endMinute,
+        timeFrom: timeFrom,
+        timeTo: timeTo
+      });
 
       const clientData = {
         name: values.name,
@@ -369,6 +434,8 @@ export default function ClientFormPage({
         },
       };
 
+      console.log("Client data to send:", clientData);
+
       if (isEdit) {
         await clients.update(params.action, clientData);
         toast({
@@ -376,12 +443,24 @@ export default function ClientFormPage({
           description: "Klient został zaktualizowany",
         });
       } else {
-        const response = await clients.create(clientData);
-        console.log("Client created:", response);
-        toast({
-          title: "Sukces",
-          description: "Klient został dodany",
-        });
+        try {
+          const response = await clients.create(clientData);
+          console.log("Client created:", response);
+          toast({
+            title: "Sukces",
+            description: "Klient został dodany",
+          });
+        } catch (error: any) {
+          if (error.response?.status === 409) {
+            toast({
+              variant: "destructive",
+              title: "Błąd",
+              description: "Wybrana godzina jest już zajęta. Wybierz inną godzinę.",
+            });
+            return;
+          }
+          throw error;
+        }
       }
 
       setTimeout(() => {
@@ -400,6 +479,9 @@ export default function ClientFormPage({
       setIsLoading(false);
     }
   }
+
+// Dodaj ten stan na początku twojego komponentu (przed return)
+const [isOpen, setIsOpen] = useState(false);
   return (
     <div className="space-y-4 p-4 md:p-6">
       <div>
@@ -501,16 +583,24 @@ export default function ClientFormPage({
                 <FormField
                   control={form.control}
                   name="date"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Data</FormLabel>
-                      <div className="flex flex-col space-y-2">
-                        <Popover>
+                  render={({ field }) => {
+                    const [isOpen, setIsOpen] = useState(false);
+                    
+                    return (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Data</FormLabel>
+                        <Popover open={isOpen} onOpenChange={setIsOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
                               <Button
-                                variant="outline"
-                                className="w-full pl-3 text-left font-normal"
+                                variant={"outline"}
+                                className={`w-[240px] pl-3 text-left font-normal ${
+                                  !field.value && "text-muted-foreground"
+                                }`}
+                                onClick={() => {
+                                  console.log("Date clicked");
+                                  setIsOpen(!isOpen); // Toggle instead of always true
+                                }}
                               >
                                 {field.value ? (
                                   format(field.value, "PPP", { locale: pl })
@@ -525,142 +615,78 @@ export default function ClientFormPage({
                             <Calendar
                               mode="single"
                               selected={field.value}
-                              onSelect={field.onChange}
-                              disabled={(date) => date < new Date("1900-01-01")}
+                              onSelect={(date) => {
+                                console.log("Selected date:", date); // Debug log
+                                field.onChange(date);
+                                setIsOpen(false); // Close the calendar after selecting a date
+                              }}
+                              disabled={(date) =>
+                                date < new Date(new Date().setHours(0, 0, 0, 0))
+                              }
                               initialFocus
                             />
                           </PopoverContent>
                         </Popover>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <FormLabel>Godzina rozpoczęcia</FormLabel>
-                    <div className="flex space-x-2">
-                      <FormField
-                        control={form.control}
-                        name="startHour"
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Godz" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {Array.from({ length: 24 }, (_, i) => (
-                                  <SelectItem
-                                    key={i}
-                                    value={i.toString().padStart(2, "0")}
-                                  >
-                                    {i.toString().padStart(2, "0")}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="startMinute"
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Min" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {Array.from({ length: 12 }, (_, i) => (
-                                  <SelectItem
-                                    key={i}
-                                    value={(i * 5).toString().padStart(2, "0")}
-                                  >
-                                    {(i * 5).toString().padStart(2, "0")}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="startHour"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Godzina rozpoczęcia</FormLabel>
+                        <FormControl>
+                          <TimePicker
+                            date={new Date(
+                              form.getValues("date").setHours(
+                                parseInt(field.value),
+                                parseInt(form.getValues("startMinute")),
+                                0,
+                                0
+                              )
+                            )}
+                            onChange={(date) => {
+                              form.setValue("startHour", date.getHours().toString().padStart(2, "0"));
+                              form.setValue("startMinute", date.getMinutes().toString().padStart(2, "0"));
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                  <div className="space-y-2">
-                    <FormLabel>Godzina zakończenia</FormLabel>
-                    <div className="flex space-x-2">
-                      <FormField
-                        control={form.control}
-                        name="endHour"
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Godz" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {Array.from({ length: 24 }, (_, i) => (
-                                  <SelectItem
-                                    key={i}
-                                    value={i.toString().padStart(2, "0")}
-                                  >
-                                    {i.toString().padStart(2, "0")}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="endMinute"
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Min" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {Array.from({ length: 12 }, (_, i) => (
-                                  <SelectItem
-                                    key={i}
-                                    value={(i * 5).toString().padStart(2, "0")}
-                                  >
-                                    {(i * 5).toString().padStart(2, "0")}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
+                  <FormField
+                    control={form.control}
+                    name="endHour"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Godzina zakończenia</FormLabel>
+                        <FormControl>
+                          <TimePicker
+                            date={new Date(
+                              form.getValues("date").setHours(
+                                parseInt(field.value),
+                                parseInt(form.getValues("endMinute")),
+                                0,
+                                0
+                              )
+                            )}
+                            onChange={(date) => {
+                              form.setValue("endHour", date.getHours().toString().padStart(2, "0"));
+                              form.setValue("endMinute", date.getMinutes().toString().padStart(2, "0"));
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </div>
 
@@ -678,7 +704,7 @@ export default function ClientFormPage({
                         <FormLabel>Preferowany kontakt</FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          defaultValue={field.value}
+                          value={field.value}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -704,7 +730,7 @@ export default function ClientFormPage({
                         <FormLabel>Priorytet</FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          defaultValue={field.value}
+                          value={field.value}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -775,7 +801,6 @@ export default function ClientFormPage({
                   )}
                 />
               </div>
-
               <div className="space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <h3 className="text-lg font-medium">Dodatkowe pola</h3>
