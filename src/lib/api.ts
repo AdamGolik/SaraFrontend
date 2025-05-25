@@ -1,7 +1,7 @@
 import axios from "axios";
 
-const API_URL = "https://rustproject.onrender.com";
-//const API_URL = "http://127.0.0.1:8080";
+//const API_URL = "https://rustproject.onrender.com";
+const API_URL = "http://127.0.0.1:8080";
 // Helper function to format date
 const formatDate = (date: string | Date): string => {
   const d = new Date(date);
@@ -154,6 +154,13 @@ export const clients = {
       });
       throw error;
     }
+  },
+  getByIdAndDate: async (clientId: string, date: string) => {
+    const response = await fetch(`${API_URL}/clients/${clientId}/date/${date}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch client by ID and date');
+    }
+    return response.json();
   },
   create: async (clientData: any) => {
     try {

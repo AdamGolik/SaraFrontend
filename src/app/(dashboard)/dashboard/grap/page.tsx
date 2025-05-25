@@ -159,7 +159,9 @@ const Scheduler: React.FC = () => {
     y: number;
   } | null>(null);
   const [showTimeline, setShowTimeline] = useState(false);
-  const [expandedAppointmentId, setExpandedAppointmentId] = useState<string | null>(null);
+  const [expandedAppointmentId, setExpandedAppointmentId] = useState<
+    string | null
+  >(null);
 
   // Get hours for the time slots (8:00 - 20:00)
   const hours = Array.from({ length: 13 }, (_, i) => i + 8); // 8 → 20
@@ -209,19 +211,29 @@ const Scheduler: React.FC = () => {
       } else {
         // For day view, adjust the time range to account for timezone
         from = startOfDay(currentDate);
-        from.setHours(from.getHours() - 2); // Subtract 2 hours to get the correct range
         to = endOfDay(currentDate);
-        to.setHours(to.getHours() - 2); // Subtract 2 hours to get the correct range
       }
 
-      console.log('Fetching appointments for range:', {
+      // Add 2 hours to both from and to dates to ensure we get the correct range
+      from.setHours(from.getHours() + 2);
+      to.setHours(to.getHours() + 2);
+      console.log("Full API URL:", `/clients?from=${from.toISOString()}&to=${to.toISOString()}&page=1&limit=100`);
+      console.log("=== API Request Details ===");
+      console.log("View type:", view);
+      console.log("Current date:", currentDate.toISOString());
+      console.log("Date range:", {
         from: from.toISOString(),
         to: to.toISOString(),
-        view,
-        currentDate: currentDate.toISOString(),
-        fromDate: from.toDateString(),
-        toDate: to.toDateString()
+        fromFormatted: format(from, "yyyy-MM-dd HH:mm:ss"),
+        toFormatted: format(to, "yyyy-MM-dd HH:mm:ss"),
       });
+      console.log("API Parameters:", {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        page: 1,
+        limit: 100
+      });
+      console.log("========================");
 
       // Fetch appointments from API
       const response = await clients.getByDateRange(
@@ -232,13 +244,17 @@ const Scheduler: React.FC = () => {
       );
 
       if (response && response.clients) {
-        console.log('Received appointments:', {
-          count: response.clients.length,
-          dates: response.clients.map(client => new Date(client.time_from).toDateString())
-        });
+        console.log("=== API Response Details ===");
+        console.log("Number of appointments:", response.clients.length);
+        console.log("Appointments dates:", response.clients.map((client: Appointment) => ({
+          date: new Date(client.time_from).toDateString(),
+          time: new Date(client.time_from).toTimeString(),
+          title: client.title
+        })));
+        console.log("=========================");
         setAppointments(response.clients);
       } else {
-        console.log('No appointments received');
+        console.log("No appointments received");
         setAppointments([]);
       }
 
@@ -260,22 +276,28 @@ const Scheduler: React.FC = () => {
   };
 
   // Check if time slot is available
-  const isTimeSlotAvailable = (date: Date, startHour: number, startMinute: number, endHour: number, endMinute: number) => {
+  const isTimeSlotAvailable = (
+    date: Date,
+    startHour: number,
+    startMinute: number,
+    endHour: number,
+    endMinute: number,
+  ) => {
     const startTime = new Date(date);
     startTime.setHours(startHour, startMinute, 0, 0);
-    
+
     const endTime = new Date(date);
     endTime.setHours(endHour, endMinute, 0, 0);
 
     // Don't check against the current appointment when editing
-    const appointmentsToCheck = editingAppointment 
-      ? appointments.filter(app => app.uuid !== editingAppointment.uuid)
+    const appointmentsToCheck = editingAppointment
+      ? appointments.filter((app) => app.uuid !== editingAppointment.uuid)
       : appointments;
 
-    return !appointmentsToCheck.some(app => {
+    return !appointmentsToCheck.some((app) => {
       const appStart = new Date(app.time_from);
       const appEnd = new Date(app.time_to);
-      
+
       // Check if the new appointment overlaps with any existing one
       return (
         (startTime >= appStart && startTime < appEnd) || // New start time falls within existing appointment
@@ -287,7 +309,10 @@ const Scheduler: React.FC = () => {
 
   // Call fetchAppointments when view or date changes
   useEffect(() => {
-    console.log('View or date changed:', { view, currentDate: currentDate.toISOString() });
+    console.log("View or date changed:", {
+      view,
+      currentDate: currentDate.toISOString(),
+    });
     fetchAppointments(true);
   }, [currentDate, view]);
 
@@ -329,7 +354,7 @@ const Scheduler: React.FC = () => {
       // For day view, ensure we're using the correct date
       const day = new Date(currentDate);
       day.setHours(0, 0, 0, 0); // Reset time to start of day
-      console.log('Day view date:', day.toISOString());
+      console.log("Day view date:", day.toISOString());
       return [day];
     }
   };
@@ -658,13 +683,15 @@ const Scheduler: React.FC = () => {
       );
 
       // Check if the time slot is available
-      if (!isTimeSlotAvailable(
-        data.date,
-        parseInt(data.startHour) + 2, // Add 2 hours for checking
-        parseInt(data.startMinute),
-        parseInt(data.endHour) + 2, // Add 2 hours for checking
-        parseInt(data.endMinute)
-      )) {
+      if (
+        !isTimeSlotAvailable(
+          data.date,
+          parseInt(data.startHour) + 2, // Add 2 hours for checking
+          parseInt(data.startMinute),
+          parseInt(data.endHour) + 2, // Add 2 hours for checking
+          parseInt(data.endMinute),
+        )
+      ) {
         toast({
           title: "Błąd",
           description: "Wybrany termin koliduje z istniejącym spotkaniem",
@@ -683,7 +710,7 @@ const Scheduler: React.FC = () => {
         description: data.description || "",
         time_from: timeFrom.toISOString().split(".")[0],
         time_to: timeTo.toISOString().split(".")[0],
-        datetime: data.datetime.toISOString().split(".")[0],
+        datetime: timeFrom.toISOString().split(".")[0],
         added_description: {
           contact_preference:
             data.added_description?.contact_preference || "telephone",
@@ -714,13 +741,21 @@ const Scheduler: React.FC = () => {
       if (selectedDateForSidebar) {
         updateSidebarAppointments(selectedDateForSidebar);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to save appointment:", error);
-      toast({
-        title: "Błąd",
-        description: "Nie udało się zapisać terminu",
-        variant: "destructive",
-      });
+      if (error.response?.status === 409) {
+        toast({
+          title: "Błąd",
+          description: "Wybrana godzina jest już zajęta. Wybierz inną godzinę.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Błąd",
+          description: "Wystąpił problem podczas zapisywania terminu",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -847,7 +882,7 @@ const Scheduler: React.FC = () => {
 
   // Helper: check if any appointment in an hour has minutes (not 0)
   const hasMinuteAppointments = (date: Date, hour: number) => {
-    return getAppointmentsForDateAndHour(date, hour).some(app => {
+    return getAppointmentsForDateAndHour(date, hour).some((app) => {
       const start = new Date(app.time_from);
       const end = new Date(app.time_to);
       return start.getMinutes() !== 0 || end.getMinutes() !== 0;
@@ -855,10 +890,10 @@ const Scheduler: React.FC = () => {
   };
 
   const getPriorityColor = (priority: string | undefined) => {
-    if (!priority) return 'bg-blue-500/80';
-    if (priority === 'high') return 'bg-red-500/80';
-    if (priority === 'low') return 'bg-green-500/80';
-    return 'bg-blue-500/80'; // medium or default
+    if (!priority) return "bg-blue-500/80";
+    if (priority === "high") return "bg-red-500/80";
+    if (priority === "low") return "bg-green-500/80";
+    return "bg-blue-500/80"; // medium or default
   };
 
   // Add long press support for month view day cells
@@ -871,7 +906,9 @@ const Scheduler: React.FC = () => {
   ) => {
     if (window.innerWidth < 640) {
       // mobile: expand details
-      setExpandedAppointmentId(appointment.uuid === expandedAppointmentId ? null : appointment.uuid);
+      setExpandedAppointmentId(
+        appointment.uuid === expandedAppointmentId ? null : appointment.uuid,
+      );
     } else {
       handleAppointmentClick(appointment, e);
     }
@@ -906,7 +943,7 @@ const Scheduler: React.FC = () => {
       {/* Booksy-style header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 py-2 md:py-4 mb-2 px-2 sm:px-4 bg-black sm:bg-transparent sticky top-0 z-30 rounded-b-xl sm:rounded-none shadow-md sm:shadow-none">
         <div className="flex items-center gap-2 justify-center">
-            <Button
+          <Button
             variant="ghost"
             size="icon"
             onClick={navigatePrevious}
@@ -915,7 +952,7 @@ const Scheduler: React.FC = () => {
             <ChevronLeft className="h-6 w-6" />
           </Button>
           <span className="text-lg sm:text-xl md:text-2xl font-bold text-center min-w-[90px] sm:min-w-[120px]">
-            {format(currentDate, 'LLLL yyyy', { locale: pl })}
+            {format(currentDate, "LLLL yyyy", { locale: pl })}
           </span>
           <Button
             variant="ghost"
@@ -928,23 +965,23 @@ const Scheduler: React.FC = () => {
         </div>
         <div className="flex gap-1 sm:gap-2 mt-2 md:mt-0 justify-center">
           <Button
-            variant={view === 'day' ? 'default' : 'outline'}
-            onClick={() => setView('day')}
-            className={`w-full sm:w-auto text-base sm:text-sm py-3 sm:py-2 rounded-xl sm:rounded-lg ${view === 'day' ? 'bg-white text-black' : ''}`}
+            variant={view === "day" ? "default" : "outline"}
+            onClick={() => setView("day")}
+            className={`w-full sm:w-auto text-base sm:text-sm py-3 sm:py-2 rounded-xl sm:rounded-lg ${view === "day" ? "bg-white text-black" : ""}`}
           >
             Dzień
           </Button>
           <Button
-            variant={view === 'week' ? 'default' : 'outline'}
-            onClick={() => setView('week')}
-            className={`w-full sm:w-auto text-base sm:text-sm py-3 sm:py-2 rounded-xl sm:rounded-lg ${view === 'week' ? 'bg-white text-black' : ''}`}
+            variant={view === "week" ? "default" : "outline"}
+            onClick={() => setView("week")}
+            className={`w-full sm:w-auto text-base sm:text-sm py-3 sm:py-2 rounded-xl sm:rounded-lg ${view === "week" ? "bg-white text-black" : ""}`}
           >
             Tydzień
           </Button>
           <Button
-            variant={view === 'month' ? 'default' : 'outline'}
-            onClick={() => setView('month')}
-            className={`w-full sm:w-auto text-base sm:text-sm py-3 sm:py-2 rounded-xl sm:rounded-lg ${view === 'month' ? 'bg-white text-black' : ''}`}
+            variant={view === "month" ? "default" : "outline"}
+            onClick={() => setView("month")}
+            className={`w-full sm:w-auto text-base sm:text-sm py-3 sm:py-2 rounded-xl sm:rounded-lg ${view === "month" ? "bg-white text-black" : ""}`}
           >
             Miesiąc
           </Button>
@@ -952,16 +989,16 @@ const Scheduler: React.FC = () => {
       </div>
       <div className="flex gap-2 mb-4 sm:hidden">
         <Button
-          className={`flex-1 py-3 rounded-xl text-lg ${view === 'day' ? 'bg-white text-black' : 'bg-gray-800 text-white'}`}
-          onClick={() => setView('day')}
-          variant={view === 'day' ? 'default' : 'outline'}
+          className={`flex-1 py-3 rounded-xl text-lg ${view === "day" ? "bg-white text-black" : "bg-gray-800 text-white"}`}
+          onClick={() => setView("day")}
+          variant={view === "day" ? "default" : "outline"}
         >
           Dzień
         </Button>
         <Button
-          className={`flex-1 py-3 rounded-xl text-lg ${view === 'week' ? 'bg-white text-black' : 'bg-gray-800 text-white'}`}
-          onClick={() => setView('week')}
-          variant={view === 'week' ? 'default' : 'outline'}
+          className={`flex-1 py-3 rounded-xl text-lg ${view === "week" ? "bg-white text-black" : "bg-gray-800 text-white"}`}
+          onClick={() => setView("week")}
+          variant={view === "week" ? "default" : "outline"}
         >
           Tydzień
         </Button>
@@ -975,7 +1012,8 @@ const Scheduler: React.FC = () => {
                 {/* Time column - only shown for week and day views */}
                 {(view === "week" || view === "day") && (
                   <div className="w-16 sm:w-16 md:w-20 flex-shrink-0 border-r border-gray-700 bg-black">
-                    <div className="h-10 sm:h-12"></div> {/* Empty cell for header alignment */}
+                    <div className="h-10 sm:h-12"></div>{" "}
+                    {/* Empty cell for header alignment */}
                     {hours.map((hour) => (
                       <div
                         key={hour}
@@ -983,13 +1021,17 @@ const Scheduler: React.FC = () => {
                       >
                         <span className="text-xs sm:text-sm font-medium text-gray-300">{`${hour}:00`}</span>
                         {/* Minute lines only if needed */}
-                        {datesToShow.some(date => hasMinuteAppointments(date, hour)) && (
+                        {datesToShow.some((date) =>
+                          hasMinuteAppointments(date, hour),
+                        ) && (
                           <div className="absolute left-0 right-0 h-full">
                             {[15, 30, 45].map((minute) => (
                               <div
                                 key={minute}
                                 className="absolute left-0 right-0 h-px bg-blue-400/60"
-                                style={{ top: `calc(${(minute / 60) * 112}px)` }} // 112px for h-28
+                                style={{
+                                  top: `calc(${(minute / 60) * 112}px)`,
+                                }} // 112px for h-28
                               />
                             ))}
                           </div>
@@ -1002,19 +1044,23 @@ const Scheduler: React.FC = () => {
                   {/* Grid Header */}
                   <div className="flex min-w-[600px] sm:min-w-full text-base sm:text-sm">
                     {view === "month"
-                      ? ["Pon", "Wt", "Śr", "Czw", "Pt", "Sb", "Nd"].map((day, i) => (
-                          <div
-                            key={i}
-                            className="flex-1 h-10 sm:h-12 flex items-center justify-center border-b border-gray-700 bg-black min-w-[60px] sm:min-w-[90px] md:min-w-[120px]"
-                          >
-                            <span className="text-xs sm:text-sm font-medium text-gray-300">
-                              {day}
-                            </span>
-                          </div>
-                        ))
+                      ? ["Pon", "Wt", "Śr", "Czw", "Pt", "Sb", "Nd"].map(
+                          (day, i) => (
+                            <div
+                              key={i}
+                              className="flex-1 h-10 sm:h-12 flex items-center justify-center border-b border-gray-700 bg-black min-w-[60px] sm:min-w-[90px] md:min-w-[120px]"
+                            >
+                              <span className="text-xs sm:text-sm font-medium text-gray-300">
+                                {day}
+                              </span>
+                            </div>
+                          ),
+                        )
                       : datesToShow.map((date, i) => {
                           let pressTimer: NodeJS.Timeout | null = null;
-                          const handleMobileDayTouchStart = (e: React.TouchEvent) => {
+                          const handleMobileDayTouchStart = (
+                            e: React.TouchEvent,
+                          ) => {
                             if (window.innerWidth < 640) {
                               tapCount++;
                               if (tapCount === 1) {
@@ -1029,7 +1075,9 @@ const Scheduler: React.FC = () => {
                               }
                             }
                           };
-                          const handleMobileDayTouchEnd = (e: React.TouchEvent) => {
+                          const handleMobileDayTouchEnd = (
+                            e: React.TouchEvent,
+                          ) => {
                             if (window.innerWidth < 640 && pressTimer) {
                               clearTimeout(pressTimer);
                             }
@@ -1038,7 +1086,8 @@ const Scheduler: React.FC = () => {
                             <div
                               key={i}
                               className={`flex-1 h-10 sm:h-12 flex flex-col items-center justify-center border-b ${
-                                format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
+                                format(date, "yyyy-MM-dd") ===
+                                format(new Date(), "yyyy-MM-dd")
                                   ? "bg-blue-900/30"
                                   : "bg-black"
                               } border-gray-700 min-w-[60px] sm:min-w-[90px] md:min-w-[120px]`}
@@ -1058,8 +1107,11 @@ const Scheduler: React.FC = () => {
                     // Month view grid
                     <div className="grid grid-cols-7 auto-rows-fr min-w-[600px] sm:min-w-full">
                       {datesToShow.map((date, i) => {
-                        const isCurrentMonth = date.getMonth() === currentDate.getMonth();
-                        const isToday = format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
+                        const isCurrentMonth =
+                          date.getMonth() === currentDate.getMonth();
+                        const isToday =
+                          format(date, "yyyy-MM-dd") ===
+                          format(new Date(), "yyyy-MM-dd");
                         const dateAppointments = getAppointmentsForDate(date);
                         let pressTimer: NodeJS.Timeout | null = null;
                         let tapCount = 0;
@@ -1097,7 +1149,7 @@ const Scheduler: React.FC = () => {
                             onTouchStart={handleMobileDayTouchStart(date)}
                             onTouchEnd={handleMobileDayTouchEnd()}
                             onTouchCancel={handleTouchCancel}
-                            style={{ touchAction: 'manipulation' }}
+                            style={{ touchAction: "manipulation" }}
                           >
                             <div className="text-right mb-1">
                               <span className="text-xs font-medium">
@@ -1106,7 +1158,8 @@ const Scheduler: React.FC = () => {
                             </div>
                             <div className="space-y-1">
                               {dateAppointments.slice(0, 2).map((app, idx) => {
-                                const priority = app.added_description?.priority || 'medium';
+                                const priority =
+                                  app.added_description?.priority || "medium";
                                 const colorClass = getPriorityColor(priority);
                                 return (
                                   <div
@@ -1116,7 +1169,11 @@ const Scheduler: React.FC = () => {
                                     onClick={(e) => {
                                       if (window.innerWidth < 640) {
                                         // mobile: expand details
-                                        setExpandedAppointmentId(app.uuid === expandedAppointmentId ? null : app.uuid);
+                                        setExpandedAppointmentId(
+                                          app.uuid === expandedAppointmentId
+                                            ? null
+                                            : app.uuid,
+                                        );
                                       } else {
                                         handleAppointmentClick(app, e);
                                       }
@@ -1129,14 +1186,21 @@ const Scheduler: React.FC = () => {
                                       }
                                     }}
                                     onTouchEnd={(e) => {
-                                      if (window.innerWidth < 640 && pressTimer) {
+                                      if (
+                                        window.innerWidth < 640 &&
+                                        pressTimer
+                                      ) {
                                         clearTimeout(pressTimer);
                                       }
                                     }}
                                   >
                                     <div className="flex items-center">
                                       <span>
-                                        {format(new Date(app.time_from), "HH:mm")} {app.title}
+                                        {format(
+                                          new Date(app.time_from),
+                                          "HH:mm",
+                                        )}{" "}
+                                        {app.title}
                                       </span>
                                     </div>
                                   </div>
@@ -1157,16 +1221,25 @@ const Scheduler: React.FC = () => {
                     <div className="relative min-w-[600px] sm:min-w-full">
                       <div className="flex">
                         {datesToShow.map((date, dateIndex) => (
-                          <div key={dateIndex} className="flex-1 min-w-[60px] sm:min-w-[90px] md:min-w-[120px]">
+                          <div
+                            key={dateIndex}
+                            className="flex-1 min-w-[60px] sm:min-w-[90px] md:min-w-[120px]"
+                          >
                             {hours.map((hour) => {
-                              const cellAppointments = getAppointmentsForDateAndHour(date, hour);
-                              const showMinuteLines = hasMinuteAppointments(date, hour);
+                              const cellAppointments =
+                                getAppointmentsForDateAndHour(date, hour);
+                              const showMinuteLines = hasMinuteAppointments(
+                                date,
+                                hour,
+                              );
                               return (
                                 <div
                                   key={`${dateIndex}-${hour}`}
                                   className={`h-32 sm:h-20 border-t border-l border-gray-700 relative group bg-black hover:bg-gray-900 ${dragTarget && dragTarget.hour === hour && isSameDay(dragTarget.date, date) ? "bg-blue-900/20" : ""} px-3 sm:px-0 rounded-xl sm:rounded-none transition-colors duration-200 ease-in-out`}
                                   onClick={() => handleCellClick(date, hour)}
-                                  onDragOver={(e) => handleDragOver(date, hour, e)}
+                                  onDragOver={(e) =>
+                                    handleDragOver(date, hour, e)
+                                  }
                                   onDrop={(e) => handleDrop(date, hour, e)}
                                 >
                                   {/* Minute lines only if needed */}
@@ -1176,7 +1249,9 @@ const Scheduler: React.FC = () => {
                                         <div
                                           key={minute}
                                           className="absolute left-0 right-0 h-px bg-blue-400/60"
-                                          style={{ top: `calc(${(minute / 60) * 112}px)` }} // 112px for h-28
+                                          style={{
+                                            top: `calc(${(minute / 60) * 112}px)`,
+                                          }} // 112px for h-28
                                         />
                                       ))}
                                     </div>
@@ -1184,18 +1259,35 @@ const Scheduler: React.FC = () => {
                                   {cellAppointments.map((app, idx) => {
                                     const startTime = new Date(app.time_from);
                                     const endTime = new Date(app.time_to);
-                                    const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60); // duration in minutes
-                                    const height = Math.max((duration / 60) * 80, 36); // min height 36px
-                                    const top = (startTime.getMinutes() / 60) * 80; // position based on minutes
-                                    const needsExpansion = duration > 60 || startTime.getMinutes() > 0 || endTime.getMinutes() > 0;
-                                    const priority = app.added_description?.priority || 'medium';
-                                    const colorClass = getPriorityColor(priority);
-                                    let appPressTimer: NodeJS.Timeout | null = null;
+                                    const duration =
+                                      (endTime.getTime() -
+                                        startTime.getTime()) /
+                                      (1000 * 60); // duration in minutes
+                                    const height = Math.max(
+                                      (duration / 60) * 80,
+                                      36,
+                                    ); // min height 36px
+                                    const top =
+                                      (startTime.getMinutes() / 60) * 80; // position based on minutes
+                                    const needsExpansion =
+                                      duration > 60 ||
+                                      startTime.getMinutes() > 0 ||
+                                      endTime.getMinutes() > 0;
+                                    const priority =
+                                      app.added_description?.priority ||
+                                      "medium";
+                                    const colorClass =
+                                      getPriorityColor(priority);
+                                    let appPressTimer: NodeJS.Timeout | null =
+                                      null;
                                     return (
                                       <div
                                         key={idx}
-                                        className={`${colorClass} rounded-xl shadow-lg p-4 sm:p-2 text-white cursor-pointer absolute left-2 right-2 group text-lg sm:text-sm ${view === 'day' ? 'hover:scale-101 transition-transform duration-200 ease-in-out hover:z-20' : view === 'week' ? 'hover:scale-105 transition-transform duration-200 ease-in-out hover:z-20' : ''}`}
-                                        style={{ height: `${height}px`, top: `${top}px` }}
+                                        className={`${colorClass} rounded-xl shadow-lg p-4 sm:p-2 text-white cursor-pointer absolute left-2 right-2 group text-lg sm:text-sm ${view === "day" ? "hover:scale-101 transition-transform duration-200 ease-in-out hover:z-20" : view === "week" ? "hover:scale-105 transition-transform duration-200 ease-in-out hover:z-20" : ""}`}
+                                        style={{
+                                          height: `${height}px`,
+                                          top: `${top}px`,
+                                        }}
                                         title={`${app.title} - ${app.name} ${app.lastname}\n${format(startTime, "HH:mm")} - ${format(endTime, "HH:mm")}`}
                                         onClick={(e) => {
                                           if (window.innerWidth < 640) {
@@ -1205,7 +1297,9 @@ const Scheduler: React.FC = () => {
                                           }
                                         }}
                                         draggable
-                                        onDragStart={(e) => handleDragStart(app, e)}
+                                        onDragStart={(e) =>
+                                          handleDragStart(app, e)
+                                        }
                                         onDragEnd={handleDragEnd}
                                         onTouchStart={(e) => {
                                           if (window.innerWidth < 640) {
@@ -1215,23 +1309,31 @@ const Scheduler: React.FC = () => {
                                           }
                                         }}
                                         onTouchEnd={(e) => {
-                                          if (window.innerWidth < 640 && appPressTimer) {
+                                          if (
+                                            window.innerWidth < 640 &&
+                                            appPressTimer
+                                          ) {
                                             clearTimeout(appPressTimer);
                                           }
                                         }}
                                       >
-                                        <div className="font-semibold truncate">{app.title}</div>
-                                        <div className="truncate text-xs">{app.name} {app.lastname}</div>
+                                        <div className="font-semibold truncate">
+                                          {app.title}
+                                        </div>
+                                        <div className="truncate text-xs">
+                                          {app.name} {app.lastname}
+                                        </div>
                                         <div className="text-xs mt-1 flex items-center gap-1">
                                           <Clock className="w-3 h-3" />
-                                          {format(startTime, "HH:mm")} - {format(endTime, "HH:mm")}
+                                          {format(startTime, "HH:mm")} -{" "}
+                                          {format(endTime, "HH:mm")}
                                         </div>
                                         {/* Show end minute below the hour if appointment is long or ends at a non-zero minute */}
                                         {needsExpansion && (
                                           <div className="absolute right-2 bottom-2 text-xs text-white/80 font-bold">
                                             {endTime.getMinutes() !== 0 && (
                                               <span>
-                                                {format(endTime, 'mm')}
+                                                {format(endTime, "mm")}
                                               </span>
                                             )}
                                           </div>
@@ -1240,9 +1342,11 @@ const Scheduler: React.FC = () => {
                                     );
                                   })}
                                   {cellAppointments.length === 0 && (
-                                    <div 
+                                    <div
                                       className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                                      onClick={() => handleCellClick(date, hour)}
+                                      onClick={() =>
+                                        handleCellClick(date, hour)
+                                      }
                                     >
                                       <span className="w-5 h-5 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-white">
                                         +
@@ -1274,7 +1378,10 @@ const Scheduler: React.FC = () => {
           </DialogHeader>
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-h-[75vh] overflow-y-auto">
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-4 max-h-[75vh] overflow-y-auto"
+            >
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -1374,39 +1481,14 @@ const Scheduler: React.FC = () => {
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Data</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            className="w-full pl-3 text-left font-normal bg-gray-900 border-gray-700 text-white hover:bg-gray-800"
-                          >
-                            {field.value ? (
-                              format(field.value, "PPP", { locale: pl })
-                            ) : (
-                              <span>Wybierz datę</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={(date) => {
-                            if (date) {
-                              field.onChange(date);
-                              // Update datetime field as well
-                              form.setValue('datetime', date);
-                            }
-                          }}
-                          disabled={(date) => date < new Date("1900-01-01")}
-                          initialFocus
-                          className="rounded-md border"
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <FormControl>
+                      <Calendar
+                        mode="single"
+                        selected={field.value}
+                        onSelect={field.onChange}
+                        initialFocus
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1659,32 +1741,42 @@ const Scheduler: React.FC = () => {
                           <FormLabel>Tagi (oddzielone przecinkami)</FormLabel>
                           <FormControl>
                             <Input
-                              value={typeof field.value === 'string' ? field.value : Array.isArray(field.value) ? field.value.join(", ") : ""}
+                              value={
+                                typeof field.value === "string"
+                                  ? field.value
+                                  : Array.isArray(field.value)
+                                    ? field.value.join(", ")
+                                    : ""
+                              }
                               onChange={(e) => {
                                 const inputValue = e.target.value;
                                 field.onChange(inputValue);
                               }}
                               onBlur={(e) => {
                                 const inputValue = e.target.value;
-                                const tags = inputValue.split(",").map(tag => tag.trim()).filter(Boolean);
+                                const tags = inputValue
+                                  .split(",")
+                                  .map((tag) => tag.trim())
+                                  .filter(Boolean);
                                 field.onChange(tags);
                               }}
                               placeholder="Wpisz tagi oddzielone przecinkami"
                               className="bg-black border-gray-700 text-white"
                             />
                           </FormControl>
-                          {Array.isArray(field.value) && field.value.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {field.value.map((tag, i) => (
-                                <span
-                                  key={i}
-                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                          {Array.isArray(field.value) &&
+                            field.value.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {field.value.map((tag, i) => (
+                                  <span
+                                    key={i}
+                                    className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           <FormMessage />
                         </FormItem>
                       )}
