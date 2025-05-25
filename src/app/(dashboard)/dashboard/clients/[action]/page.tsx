@@ -228,7 +228,7 @@ export default function ClientFormPage({
     if (Array.isArray(value)) return "array";
     if (typeof value === "number") return "number";
     return "string";
-  };  
+  };
 
   const fetchClient = async () => {
     try {
@@ -269,7 +269,7 @@ export default function ClientFormPage({
       console.log("Parsed dates:", {
         timeFrom: timeFromDate,
         timeTo: timeToDate,
-        datetime: datetimeDate
+        datetime: datetimeDate,
       });
 
       // Set form values with proper data types
@@ -280,12 +280,24 @@ export default function ClientFormPage({
       form.setValue("description", response.description || "");
       form.setValue("date", timeFromDate);
       form.setValue("datetime", datetimeDate);
-      
+
       // Set time fields from parsed dates
-      form.setValue("startHour", timeFromDate.getHours().toString().padStart(2, "0"));
-      form.setValue("startMinute", timeFromDate.getMinutes().toString().padStart(2, "0"));
-      form.setValue("endHour", timeToDate.getHours().toString().padStart(2, "0"));
-      form.setValue("endMinute", timeToDate.getMinutes().toString().padStart(2, "0"));
+      form.setValue(
+        "startHour",
+        timeFromDate.getHours().toString().padStart(2, "0"),
+      );
+      form.setValue(
+        "startMinute",
+        timeFromDate.getMinutes().toString().padStart(2, "0"),
+      );
+      form.setValue(
+        "endHour",
+        timeToDate.getHours().toString().padStart(2, "0"),
+      );
+      form.setValue(
+        "endMinute",
+        timeToDate.getMinutes().toString().padStart(2, "0"),
+      );
 
       // Set added_description fields
       const addedDesc = response.added_description || {};
@@ -303,7 +315,6 @@ export default function ClientFormPage({
         endHour: form.getValues("endHour"),
         endMinute: form.getValues("endMinute"),
       });
-
     } catch (error) {
       console.error("Failed to fetch client:", error);
       toast({
@@ -334,26 +345,29 @@ export default function ClientFormPage({
   const handleCustomFieldValueChange = (index: number, value: string) => {
     const field = customFields[index];
     let newValue: string | string[] = value;
-    
+
     if (field.type === "array") {
       newValue = value;
     } else if (field.type === "number") {
       newValue = value.replace(/[^0-9.-]/g, "");
     }
-    
+
     updateCustomField(index, { ...field, value: newValue });
   };
 
-  const handleCustomFieldTypeChange = (index: number, type: "string" | "array" | "number") => {
+  const handleCustomFieldTypeChange = (
+    index: number,
+    type: "string" | "array" | "number",
+  ) => {
     const field = customFields[index];
     let newValue: string | string[] = "";
-    
+
     if (type === "array") {
       newValue = "";
     } else if (type === "number") {
       newValue = "";
     }
-    
+
     updateCustomField(index, { ...field, type, value: newValue });
   };
 
@@ -361,12 +375,18 @@ export default function ClientFormPage({
     try {
       setIsLoading(true);
       console.log("Form values on submit:", values);
-      
+
       const customFieldsObject = customFields.reduce(
         (acc, { key, value, type }) => {
           if (key && value) {
             if (type === "array") {
-              acc[key] = typeof value === 'string' ? value.split(",").map(item => item.trim()).filter(Boolean) : value;
+              acc[key] =
+                typeof value === "string"
+                  ? value
+                      .split(",")
+                      .map((item) => item.trim())
+                      .filter(Boolean)
+                  : value;
             } else if (type === "number") {
               acc[key] = Number(value);
             } else {
@@ -384,15 +404,15 @@ export default function ClientFormPage({
         parseInt(values.startHour) + 2,
         parseInt(values.startMinute),
         0,
-        0
+        0,
       );
-      
+
       const timeTo = new Date(values.date);
       timeTo.setHours(
         parseInt(values.endHour) + 2,
         parseInt(values.endMinute),
         0,
-        0
+        0,
       );
 
       // Validate that end time is after start time
@@ -400,7 +420,8 @@ export default function ClientFormPage({
         toast({
           variant: "destructive",
           title: "Błąd",
-          description: "Godzina zakończenia musi być późniejsza niż godzina rozpoczęcia",
+          description:
+            "Godzina zakończenia musi być późniejsza niż godzina rozpoczęcia",
         });
         return;
       }
@@ -412,7 +433,7 @@ export default function ClientFormPage({
         endHour: values.endHour,
         endMinute: values.endMinute,
         timeFrom: timeFrom,
-        timeTo: timeTo
+        timeTo: timeTo,
       });
 
       const clientData = {
@@ -455,7 +476,8 @@ export default function ClientFormPage({
             toast({
               variant: "destructive",
               title: "Błąd",
-              description: "Wybrana godzina jest już zajęta. Wybierz inną godzinę.",
+              description:
+                "Wybrana godzina jest już zajęta. Wybierz inną godzinę.",
             });
             return;
           }
@@ -480,8 +502,7 @@ export default function ClientFormPage({
     }
   }
 
-// Dodaj ten stan na początku twojego komponentu (przed return)
-const [isOpen, setIsOpen] = useState(false);
+  // Dodaj ten stan na początku twojego komponentu (przed return)
   return (
     <div className="space-y-4 p-4 md:p-6">
       <div>
@@ -585,7 +606,7 @@ const [isOpen, setIsOpen] = useState(false);
                   name="date"
                   render={({ field }) => {
                     const [isOpen, setIsOpen] = useState(false);
-                    
+
                     return (
                       <FormItem className="flex flex-col">
                         <FormLabel>Data</FormLabel>
@@ -598,8 +619,8 @@ const [isOpen, setIsOpen] = useState(false);
                                   !field.value && "text-muted-foreground"
                                 }`}
                                 onClick={() => {
-                                  console.log("Date clicked");
-                                  setIsOpen(!isOpen); // Toggle instead of always true
+                                  console.log("Button clicked");
+                                  setIsOpen(!isOpen); // Toggle calendar visibility
                                 }}
                               >
                                 {field.value ? (
@@ -642,17 +663,27 @@ const [isOpen, setIsOpen] = useState(false);
                         <FormLabel>Godzina rozpoczęcia</FormLabel>
                         <FormControl>
                           <TimePicker
-                            date={new Date(
-                              form.getValues("date").setHours(
-                                parseInt(field.value),
-                                parseInt(form.getValues("startMinute")),
-                                0,
-                                0
+                            date={
+                              new Date(
+                                form
+                                  .getValues("date")
+                                  .setHours(
+                                    parseInt(field.value),
+                                    parseInt(form.getValues("startMinute")),
+                                    0,
+                                    0,
+                                  ),
                               )
-                            )}
+                            }
                             onChange={(date) => {
-                              form.setValue("startHour", date.getHours().toString().padStart(2, "0"));
-                              form.setValue("startMinute", date.getMinutes().toString().padStart(2, "0"));
+                              form.setValue(
+                                "startHour",
+                                date.getHours().toString().padStart(2, "0"),
+                              );
+                              form.setValue(
+                                "startMinute",
+                                date.getMinutes().toString().padStart(2, "0"),
+                              );
                             }}
                           />
                         </FormControl>
@@ -669,17 +700,27 @@ const [isOpen, setIsOpen] = useState(false);
                         <FormLabel>Godzina zakończenia</FormLabel>
                         <FormControl>
                           <TimePicker
-                            date={new Date(
-                              form.getValues("date").setHours(
-                                parseInt(field.value),
-                                parseInt(form.getValues("endMinute")),
-                                0,
-                                0
+                            date={
+                              new Date(
+                                form
+                                  .getValues("date")
+                                  .setHours(
+                                    parseInt(field.value),
+                                    parseInt(form.getValues("endMinute")),
+                                    0,
+                                    0,
+                                  ),
                               )
-                            )}
+                            }
                             onChange={(date) => {
-                              form.setValue("endHour", date.getHours().toString().padStart(2, "0"));
-                              form.setValue("endMinute", date.getMinutes().toString().padStart(2, "0"));
+                              form.setValue(
+                                "endHour",
+                                date.getHours().toString().padStart(2, "0"),
+                              );
+                              form.setValue(
+                                "endMinute",
+                                date.getMinutes().toString().padStart(2, "0"),
+                              );
                             }}
                           />
                         </FormControl>
@@ -771,14 +812,23 @@ const [isOpen, setIsOpen] = useState(false);
                       <FormLabel>Tagi (oddzielone przecinkami)</FormLabel>
                       <FormControl>
                         <Input
-                          value={typeof field.value === 'string' ? field.value : Array.isArray(field.value) ? field.value.join(", ") : ""}
+                          value={
+                            typeof field.value === "string"
+                              ? field.value
+                              : Array.isArray(field.value)
+                                ? field.value.join(", ")
+                                : ""
+                          }
                           onChange={(e) => {
                             const inputValue = e.target.value;
                             field.onChange(inputValue);
                           }}
                           onBlur={(e) => {
                             const inputValue = e.target.value;
-                            const tags = inputValue.split(",").map(tag => tag.trim()).filter(Boolean);
+                            const tags = inputValue
+                              .split(",")
+                              .map((tag) => tag.trim())
+                              .filter(Boolean);
                             field.onChange(tags);
                           }}
                           placeholder="Wpisz tagi oddzielone przecinkami"
@@ -828,12 +878,19 @@ const [isOpen, setIsOpen] = useState(false);
                         <Input
                           placeholder="Nazwa pola"
                           value={field.key}
-                          onChange={(e) => updateCustomField(index, { ...field, key: e.target.value })}
+                          onChange={(e) =>
+                            updateCustomField(index, {
+                              ...field,
+                              key: e.target.value,
+                            })
+                          }
                           className="flex-1"
                         />
                         <Select
                           value={field.type}
-                          onValueChange={(value: "string" | "array" | "number") => handleCustomFieldTypeChange(index, value)}
+                          onValueChange={(
+                            value: "string" | "array" | "number",
+                          ) => handleCustomFieldTypeChange(index, value)}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Typ pola" />
@@ -858,27 +915,45 @@ const [isOpen, setIsOpen] = useState(false);
                         <div className="space-y-2">
                           <Input
                             placeholder="Wartości (oddzielone przecinkami)"
-                            value={typeof field.value === 'string' ? field.value : Array.isArray(field.value) ? field.value.join(", ") : ""}
-                            onChange={(e) => handleCustomFieldValueChange(index, e.target.value)}
+                            value={
+                              typeof field.value === "string"
+                                ? field.value
+                                : Array.isArray(field.value)
+                                  ? field.value.join(", ")
+                                  : ""
+                            }
+                            onChange={(e) =>
+                              handleCustomFieldValueChange(
+                                index,
+                                e.target.value,
+                              )
+                            }
                           />
-                          {Array.isArray(field.value) && field.value.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {field.value.map((item, i) => (
-                                <span
-                                  key={i}
-                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
-                                >
-                                  {item}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                          {Array.isArray(field.value) &&
+                            field.value.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {field.value.map((item, i) => (
+                                  <span
+                                    key={i}
+                                    className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                                  >
+                                    {item}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                         </div>
                       ) : (
                         <Input
-                          placeholder={field.type === "number" ? "Wprowadź liczbę" : "Wprowadź wartość"}
+                          placeholder={
+                            field.type === "number"
+                              ? "Wprowadź liczbę"
+                              : "Wprowadź wartość"
+                          }
                           value={field.value}
-                          onChange={(e) => handleCustomFieldValueChange(index, e.target.value)}
+                          onChange={(e) =>
+                            handleCustomFieldValueChange(index, e.target.value)
+                          }
                           type={field.type === "number" ? "number" : "text"}
                         />
                       )}
@@ -951,5 +1026,3 @@ const [isOpen, setIsOpen] = useState(false);
     </div>
   );
 }
-
-
